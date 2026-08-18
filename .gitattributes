@@ -1,0 +1,4 @@
+# Store everything with LF in the repository, regardless of the platform it was
+# authored on. Without this, files committed from Windows land as CRLF and every
+# subsequent clone on macOS or Linux shows a whole-file diff.
+* text=auto eol=lf

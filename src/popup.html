@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Threads for Trello</title>
+    <style>
+      body {
+        width: 260px;
+        margin: 0;
+        padding: 14px;
+        font: 13px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        color: #172b4d;
+      }
+      h1 {
+        margin: 0 0 12px;
+        font-size: 14px;
+      }
+      label {
+        display: block;
+        margin: 10px 0 4px;
+        font-weight: 600;
+      }
+      select,
+      input[type='number'] {
+        width: 100%;
+        padding: 5px;
+        border: 1px solid #dfe1e6;
+        border-radius: 4px;
+        font: inherit;
+        box-sizing: border-box;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .row label {
+        margin: 0;
+        font-weight: 400;
+      }
+      .hint {
+        margin: 4px 0 0;
+        color: #626f86;
+        font-size: 11px;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #1d2125;
+          color: #b6c2cf;
+        }
+        select,
+        input[type='number'] {
+          background: #22272b;
+          border-color: #3c454f;
+          color: inherit;
+        }
+        .hint {
+          color: #9fadbc;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Threads for Trello</h1>
+
+    <label for="nestMode">Reply behaviour</label>
+    <select id="nestMode">
+      <option value="nested">Nested — replies nest under what you replied to</option>
+      <option value="flat">Flat — replies attach to the top of the thread</option>
+    </select>
+    <p class="hint" id="nestHint"></p>
+
+    <label for="maxDepth">Max nesting depth</label>
+    <input id="maxDepth" type="number" min="1" max="10" step="1" />
+
+    <label for="indentPx">Indent per level (px)</label>
+    <input id="indentPx" type="number" min="16" max="64" step="2" />
+
+    <div class="row">
+      <input id="autoMention" type="checkbox" />
+      <label for="autoMention">@mention the person you reply to</label>
+    </div>
+    <p class="hint">
+      Matches what Trello's own Reply does. Skipped on your own comments — Trello doesn't
+      notify you about yourself.
+    </p>
+
+    <div class="row">
+      <input id="debug" type="checkbox" />
+      <label for="debug">Log diagnostics to console</label>
+    </div>
+
+    <p class="hint">Changes apply immediately — reload the Trello tab if a card is already open.</p>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

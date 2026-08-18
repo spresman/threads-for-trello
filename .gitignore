@@ -1,0 +1,13 @@
+# Packaged builds for the Chrome Web Store
+*.zip
+*.crx
+*.pem
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Not used today, but keeps an accidental `npm install` out of the repo
+node_modules/

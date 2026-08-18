@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Threads for Trello",
+  "version": "0.1.0",
+  "description": "Collapsible threaded replies on Trello cards, built on native Trello comments.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://trello.com/*"],
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "Threads for Trello"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://trello.com/*"],
+      "js": ["src/interceptor.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://trello.com/*"],
+      "js": ["src/threads.js"],
+      "css": ["src/threads.css"],
+      "run_at": "document_idle",
+      "world": "ISOLATED",
+      "all_frames": false
+    }
+  ]
+}

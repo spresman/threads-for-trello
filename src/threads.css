@@ -1,0 +1,198 @@
+/* Threads for Trello — threaded comment layout.
+   Scoped to .tt-* classes so nothing here can leak into Trello's own styles.
+
+   Thread guides are decorative only (pointer-events: none) — collapsing is
+   handled by the arrow in the comment's action row.
+
+   Comment rows are flat siblings with no vertical gap between them, so every
+   guide runs edge to edge (top: 0 / bottom: 0) and lines meet exactly. An
+   ancestor's line is painted *through* deeper rows by JS, which emits one rail
+   per level that still has siblings to come. */
+
+/* No padding here on purpose. The feed is a grid whose rows subgrid its
+   columns, so padding shifts each row's box while its children stay pinned to
+   the ancestor's column lines — which compresses the avatar track and slides
+   the avatar under the name. */
+
+/* Only applied when the feed is NOT already flex or grid. `order` works in
+   both, so forcing flex on a grid container would collapse Trello's own
+   column layout — avatar, name and timestamp would stack onto separate rows. */
+.tt-container--forceflex {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.tt-row {
+  position: relative;
+  transition: transform 120ms ease;
+}
+
+/* Tombstone standing in for a deleted comment, so its replies keep their place
+   in the thread. Tall enough that the guide leaving it (which starts below
+   where an avatar would be) still has room to reach its replies. */
+.tt-ghost {
+  grid-column: 1 / -1;
+  min-height: 56px;
+}
+
+.tt-ghost__label {
+  padding: 14px 0 0 36px;
+  color: var(--tt-muted, #626f86);
+  font-size: 14px;
+  font-style: italic;
+  opacity: 0.75;
+}
+
+.tt-ghost > .tt-ownrow {
+  padding-left: 36px;
+}
+
+/* Uniform scale, so the circle stays a circle — setting width/height on the
+   avatar button without also resizing its inner span squashes it into an oval.
+   Anchored right so it frees an 8px lane at the row's left edge for the
+   thread guides (see AVATAR_LANE). */
+.tt-avatar {
+  transform: scale(0.75);
+  transform-origin: right center;
+}
+
+/* ----------------------------------------------------------------- rails */
+
+/* One SVG per row holding a single stroked path — see decorateRails().
+   `left` and `width` are set inline: the canvas is deliberately wider than the
+   row and offset leftward, so the guides (which live at negative x) fall inside
+   it and clipping never applies. `height` is explicit rather than `inset: 0` —
+   an <svg> is a replaced element with an intrinsic 300x150 that insets won't
+   stretch. */
+.tt-rails {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.tt-rails path {
+  fill: none;
+  stroke: var(--tt-line, #d8dbe1);
+  stroke-width: 2;
+  shape-rendering: geometricPrecision;
+}
+
+/* Where guides meet a comment: the avatar's vertical centre (32px tall at y=8),
+   so lines arrive beside the avatar rather than across the text. */
+:root {
+  --tt-anchor: 24px;
+  --tt-elbow-r: 8px;
+  --tt-avatar-bottom: 40px;
+}
+
+/* (The old .tt-origin turn is gone — rails now descend from beneath the avatar,
+   so no horizontal run exists to overlap the circle.) */
+
+/* (Rails, stems, arcs and parent lines are all segments of the single path
+   above — no per-segment elements exist any more.) */
+
+.tt-row--replying {
+  outline: 2px solid var(--tt-accent, #0c66e4);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* -------------------------------------------------------------- controls */
+
+/* Reply and the collapse arrow clone Trello's own button classes and separator
+   node, so they deliberately get almost no styling here — colour, underline,
+   hover and focus all come from Trello, and anything we added would drift from
+   native the moment they restyle. The row supplies its own `gap: 4px`, so the
+   buttons are appended straight into it with no wrapper. */
+.tt-toggle {
+  white-space: nowrap;
+}
+
+/* Trello's own Reply, superseded by ours, and its orphaned separator. */
+.tt-hidden {
+  display: none !important;
+}
+
+/* Applied when no native button was available to clone from. Without it the
+   button falls back to raw browser chrome — grey box, outset border, 14px. */
+.tt-fallback {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--tt-muted, #626f86);
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  text-decoration: underline;
+  padding: 0;
+  cursor: pointer;
+}
+
+.tt-fallback:hover {
+  color: var(--tt-fg, #172b4d);
+}
+
+.tt-fallback.tt-toggle {
+  text-decoration: none;
+}
+
+/* Fallback row, only built when Trello gives us nowhere to dock. No native
+   button exists to clone here, so these do need real styling. */
+.tt-ownrow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.tt-ownrow .tt-reply,
+.tt-ownrow .tt-toggle {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--tt-muted, #626f86);
+  font: inherit;
+  text-decoration: underline;
+  padding: 0;
+  cursor: pointer;
+}
+
+.tt-ownrow .tt-toggle {
+  text-decoration: none;
+}
+
+.tt-ownrow .tt-reply:focus-visible,
+.tt-ownrow .tt-toggle:focus-visible {
+  outline: 2px solid var(--tt-accent, #0c66e4);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* -------------------------------------------------------------- dark mode */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --tt-line: #595a5d;
+    --tt-muted: #9fadbc;
+    --tt-fg: #b6c2cf;
+    --tt-accent: #579dff;
+  }
+}
+
+/* Trello's own theme switch wins over the OS preference in both directions. */
+:root[data-color-mode='dark'] {
+  --tt-line: #595a5d;
+  --tt-muted: #9fadbc;
+  --tt-fg: #b6c2cf;
+  --tt-accent: #579dff;
+}
+
+:root[data-color-mode='light'] {
+  --tt-line: #d8dbe1;
+  --tt-muted: #626f86;
+  --tt-fg: #172b4d;
+  --tt-accent: #0c66e4;
+}
