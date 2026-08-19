@@ -1,0 +1,11 @@
+{
+  "name": "threads-for-trello",
+  "version": "0.1.2",
+  "description": "Collapsible threaded replies on Trello cards, built on native Trello comments.",
+  "private": true,
+  "scripts": {
+    "test": "node test/roundtrip.test.js",
+    "build": "node scripts/build.mjs"
+  },
+  "license": "MIT"
+}

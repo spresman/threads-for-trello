@@ -65,6 +65,24 @@ node test/roundtrip.test.js
 
 For the DOM behaviour — threading, guides, collapse, the composer/mention path and tombstones — see [`docs/TESTING.md`](docs/TESTING.md), which covers driving the extension against live Trello (including why current Chrome needs **Chrome for Testing** to load it unpacked).
 
+## Building for the Chrome Web Store
+
+```
+npm run build      # or: node scripts/build.mjs
+```
+
+Produces `dist/threads-for-trello-<version>.zip` containing only what ships
+(`manifest.json`, `src/`, `icons/`), which you upload to the [Developer
+Dashboard](https://chrome.google.com/webstore/devconsole). Bump `version` in
+`manifest.json` (and `package.json`) before each store update. Listing copy and
+the publishing checklist live in [`docs/store-listing.md`](docs/store-listing.md).
+
+## Privacy
+
+No data is collected, transmitted, or shared; there is no server. Threading is
+stored as invisible markers inside your own comments, and collapse state stays
+local to your browser. Full details in [`PRIVACY.md`](PRIVACY.md).
+
 ## Design notes
 
 [`docs/DESIGN.md`](docs/DESIGN.md) covers the architecture, the DOM constraints Trello imposes, how the thread guides are drawn, and the bugs that shaped the current design — worth reading before changing anything.
