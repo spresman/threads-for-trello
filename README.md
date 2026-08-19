@@ -63,6 +63,8 @@ node test/roundtrip.test.js
 
 15 tests over the marker engine: injection across every request shape Trello uses, `@mention` handling, and full encode → API → decode round-trips.
 
+For the DOM behaviour — threading, guides, collapse, the composer/mention path and tombstones — see [`docs/TESTING.md`](docs/TESTING.md), which covers driving the extension against live Trello (including why current Chrome needs **Chrome for Testing** to load it unpacked).
+
 ## Design notes
 
 [`docs/DESIGN.md`](docs/DESIGN.md) covers the architecture, the DOM constraints Trello imposes, how the thread guides are drawn, and the bugs that shaped the current design — worth reading before changing anything.
