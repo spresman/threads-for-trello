@@ -275,6 +275,9 @@
 
   function setPendingParent(id, mention) {
     pendingParent = id;
+    // A freshly armed reply has no draft yet; the empty composer that follows a
+    // Reply click must not be read as an abandoned draft (see reconcilePendingReply).
+    if (id) pendingDrafted = false;
     window.postMessage(
       { __tt: 'content', type: 'set-parent', parentId: id, mention: mention || null },
       '*'
@@ -291,6 +294,45 @@
   function clearPendingParent() {
     setPendingParent(null);
   }
+
+  /**
+   * A pending reply target must not outlive the composing session that set it.
+   *
+   * `pendingParent` (and the mention that rides with it) is armed on a Reply
+   * click and, until now, only disarmed on send, card navigation, or context
+   * death. Abandoning the reply — clearing the drafted text, or clicking away
+   * after drafting — left it armed, so the *next* comment posted on the card
+   * silently inherited that parent *and* re-@mentioned its author, tagging and
+   * notifying someone the user never meant to reply to.
+   *
+   * We disarm when a composer that *had* content becomes empty. The
+   * "had content" guard (`pendingDrafted`) is what keeps this off a genuine
+   * reply: right after a Reply click the composer is legitimately empty and
+   * still mounting, and that empty state must not read as abandonment. A real
+   * send is safe too — the interceptor clears pending via 'reply-sent' before
+   * Trello tears the composer down, and a Save click leaves the text in place
+   * at the moment it fires — so this never disarms a reply in flight.
+   *
+   * A mention reply always drafts content (the @handle chip or text), so its
+   * higher-stakes case — an unwanted mention on the next comment — is always
+   * covered once the draft is cleared.
+   */
+  let pendingDrafted = false;
+  function reconcilePendingReply() {
+    if (!pendingParent) return;
+    const ed = document.querySelector('[data-testid*="comment"] [contenteditable="true"]');
+    if (ed && editorText(ed)) {
+      pendingDrafted = true; // a draft exists; this is a live reply
+    } else if (pendingDrafted) {
+      clearPendingParent(); // draft was cleared/discarded -> reply abandoned
+    }
+  }
+  // Editing the draft down to empty disarms before replacement text is typed.
+  document.addEventListener('input', reconcilePendingReply, true);
+  // Blurring away after drafting (Trello may discard the draft) disarms too.
+  // Deferred a tick so focus moving to the Save button — draft still present —
+  // is never mistaken for abandonment.
+  document.addEventListener('focusout', () => setTimeout(reconcilePendingReply, 0), true);
 
   // ----------------------------------------------------- node <-> id match
 
@@ -1479,6 +1521,10 @@
   pathTimer = setInterval(() => {
     if (retired) return;
     if (!contextAlive()) return retire('pathWatch');
+    // Trello inserts the @mention chip programmatically, which fires no `input`
+    // event, so poll here too: this is what registers that a mention reply has
+    // drafted content, so clearing that draft is then recognised as abandonment.
+    reconcilePendingReply();
     if (location.pathname !== lastPath) {
       lastPath = location.pathname;
       clearPendingParent();
