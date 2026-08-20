@@ -159,7 +159,7 @@ export async function post(s, text) {
  * Returns what the composer showed before sending, so the @mention chip can
  * be asserted on.
  */
-export async function replyVia(s, needle, text) {
+export async function replyVia(s, needle, text, waitForMentionMs = 6000) {
   const row = s.page.locator(`[data-tt-id]:has-text(${JSON.stringify(needle)})`).last();
   // Our control clones Trello's own button class, so it inherits Trello's
   // hover gating — it is not clickable until the row is hovered.
@@ -168,11 +168,75 @@ export async function replyVia(s, needle, text) {
   await row.locator('[data-tt="reply"]').first().click({ force: true });
   const ed = await editorEl(s);
   await ed.click();
-  await s.page.waitForTimeout(600);
-  const beforeTyping = (await ed.innerText()).trim();
+
+  // How long until the composer actually shows something? The placeholder is a
+  // real aria-hidden span inside the contenteditable, so it has to be stripped
+  // the same way the extension's own editorText() strips it — otherwise an
+  // empty composer reads as the text "Write a comment…".
+  const t0 = Date.now();
+  let seen = '';
+  while (Date.now() - t0 < waitForMentionMs) {
+    seen = await ed.evaluate((el) => {
+      const clone = el.cloneNode(true);
+      clone.querySelectorAll('[aria-hidden="true"]').forEach((n) => n.remove());
+      return clone.textContent.replace(/\s+/g, ' ').trim();
+    });
+    if (seen) break;
+    await s.page.waitForTimeout(100);
+  }
+  const mentionMs = seen ? Date.now() - t0 : null;
+
   await ed.type(text, { delay: 10 });
   await save(s);
-  return beforeTyping;
+  return { composer: seen, mentionMs };
+}
+
+/**
+ * Delete a comment through Trello's own API, from inside a logged-in page.
+ * The CSRF token (`dsc`) must travel in the body — in the query string Trello
+ * answers "CSRF detected".
+ */
+export function deleteComment(s, actionId) {
+  return s.page.evaluate(async (id) => {
+    const dsc = document.cookie.match(/(?:^|;\s*)dsc=([^;]+)/)?.[1];
+    const r = await fetch(`/1/actions/${id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dsc }),
+    });
+    return { ok: r.ok, status: r.status };
+  }, actionId);
+}
+
+/** Create a card on a list, returning {shortLink, id}. */
+export function createCard(s, idList, name) {
+  return s.page.evaluate(async ({ idList, name }) => {
+    const dsc = document.cookie.match(/(?:^|;\s*)dsc=([^;]+)/)?.[1];
+    const r = await fetch('/1/cards', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idList, name, dsc }),
+    });
+    return r.ok ? r.json() : { error: r.status, body: await r.text() };
+  }, { idList, name });
+}
+
+/** Reload and wait for the extension to settle. */
+export async function reload(s, ms = 6000) {
+  await s.page.reload({ waitUntil: 'domcontentloaded' });
+  await s.page.waitForTimeout(ms);
+}
+
+/** Every tombstone currently rendered, with its depth. */
+export function ghosts(s) {
+  return s.page.evaluate(() =>
+    Array.from(document.querySelectorAll('.tt-ghost')).map((el) => ({
+      id: el.dataset.ttId,
+      depth: Number(el.dataset.ttDepth ?? -1),
+    }))
+  );
 }
 
 /** Read a comment's stored text straight from the API, markers and all. */

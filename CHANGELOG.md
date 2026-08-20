@@ -4,6 +4,29 @@ Versions here match the `version` in `manifest.json`, which is what Chrome and
 the Web Store use to decide whether a user is out of date. Each release is
 tagged `v<version>` in git.
 
+## [0.2.1] - 2026-08-20
+
+### Fixed
+
+- **Every reply after the first one on a page opened an empty composer.** After
+  handing the mention off to Trello's own Reply (which inserts a real mention
+  chip), we also called `focusComposer()`, which clicks the composer skeleton to
+  mount the editor. With the editor already mounting, that second click
+  re-mounted it and discarded the chip. Replies now only scroll the composer
+  into view once Trello has finished with it.
+
+  The mention still reached the *posted* comment in every case -- the
+  interceptor stamps it at send time -- so replies were correctly threaded and
+  authors were correctly notified throughout. What was lost was any way to see
+  that before pressing Send.
+
+### Added
+
+- `test/browser/02-deletion.mjs` -- tombstones across two accounts and reloads.
+- `test/browser/03-permissions.mjs` -- ownership and @mention behaviour on
+  boards in both admin/normal directions, asserting on the text Trello actually
+  stored, not just the composer.
+
 ## [0.2.0] — 2026-08-20
 
 ### Fixed

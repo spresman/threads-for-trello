@@ -1075,7 +1075,7 @@
         const native = mention && row && !composerHasText() ? nativeReplyFor(row) : null;
         if (native) {
           native.click(); // Trello inserts the chip and mounts the composer
-          focusComposer(null); // our scroll-into-view; nothing left to insert
+          revealComposer(); // scroll only — touching it now would undo the chip
         } else {
           focusComposer(mention);
         }
@@ -1393,6 +1393,25 @@
         new InputEvent('input', { bubbles: true, data: tag, inputType: 'insertText' })
       );
     }
+  }
+
+  /**
+   * Scroll the composer into view without touching it.
+   *
+   * Used after handing off to Trello's own Reply, which has already mounted the
+   * composer and inserted the mention chip. focusComposer() must NOT be used
+   * here: it clicks the composer skeleton to mount the editor, and when the
+   * editor is already mounting that second click re-mounts it and the chip is
+   * discarded. That is what made every reply *after the first one on a page*
+   * arrive with an empty composer — the mention still reached the posted
+   * comment, because the interceptor stamps it at send time, so the reply was
+   * correctly threaded and the author correctly notified. It simply looked as
+   * though nothing had happened, with no way to tell before pressing Send.
+   */
+  function revealComposer() {
+    whenEditorReady(document, 2000).then((ed) => {
+      if (ed) ed.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
   }
 
   function focusComposer(mention) {

@@ -119,11 +119,11 @@ console.dir(await readTree(b), { depth: null });
 console.log('\n--- B replies to A’s (unclaimed) comment, as a user would ---');
 const bCanUseOurs = (await probe(b, ROOT)).hasOurReply;
 if (bCanUseOurs) {
-  const composerShowed = await replyVia(b, ROOT, CROSS);
+  const composerShowed = (await replyVia(b, ROOT, CROSS));
   record(
     'B: composer shows the @mention before sending',
-    /@/.test(composerShowed),
-    `composer contained: ${JSON.stringify(composerShowed)}`
+    /@/.test(composerShowed.composer),
+    `composer contained: ${JSON.stringify(composerShowed.composer)} after ${composerShowed.mentionMs}ms`
   );
 } else {
   record(
