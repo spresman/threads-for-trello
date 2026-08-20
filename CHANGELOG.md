@@ -4,6 +4,28 @@ Versions here match the `version` in `manifest.json`, which is what Chrome and
 the Web Store use to decide whether a user is out of date. Each release is
 tagged `v<version>` in git.
 
+## [0.3.0] - 2026-08-20
+
+### Fixed
+
+- **Editing a comment silently destroyed its threading.** The parent marker
+  lives inside the comment's own text, and an edit is a `PUT /1/actions/<id>`
+  carrying the full replacement text — so Trello's editor, which knows nothing
+  about the marker, dropped it. The reply left its thread and became a top-level
+  comment, taking its own replies with it, for everyone on the card. The
+  interceptor now re-attaches the marker as the edit goes out, so an edit is
+  lossless rather than merely survivable.
+
+  Edits made where the extension is not running (another client, or retyping
+  from a copy/paste) can still lose the marker; that degradation is unchanged
+  and documented.
+
+### Added
+
+- `test/browser/04-editing.mjs`, plus four unit tests covering marker repair on
+  edit: restored when lost, left alone when already present, never doubled,
+  never picking up an `@mention`, and untouched for comments never seen.
+
 ## [0.2.1] - 2026-08-20
 
 ### Fixed

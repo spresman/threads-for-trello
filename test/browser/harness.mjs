@@ -209,6 +209,27 @@ export function deleteComment(s, actionId) {
   }, actionId);
 }
 
+/**
+ * Edit a comment through Trello's own UI, replacing its text.
+ * This is the path that risks stripping the invisible marker: the text goes
+ * through Trello's editor and back out again.
+ */
+export async function editComment(s, needle, newText) {
+  const row = s.page.locator(`[data-tt-id]:has-text(${JSON.stringify(needle)})`).last();
+  await row.hover();
+  await s.page.waitForTimeout(300);
+  const edit = row.getByRole('button', { name: /^edit$/i }).first();
+  await edit.click({ force: true });
+  const ed = s.page.locator('[contenteditable="true"]').filter({ hasText: needle }).first();
+  await ed.waitFor({ state: 'visible', timeout: 15000 });
+  await ed.click();
+  // Select-all then type, the way a person editing a comment would.
+  await s.page.keyboard.press('Control+A');
+  await s.page.keyboard.type(newText, { delay: 10 });
+  await s.page.getByRole('button', { name: /^save$/i }).first().click();
+  await s.page.waitForTimeout(3000);
+}
+
 /** Create a card on a list, returning {shortLink, id}. */
 export function createCard(s, idList, name) {
   return s.page.evaluate(async ({ idList, name }) => {

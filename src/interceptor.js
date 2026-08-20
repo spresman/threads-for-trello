@@ -85,6 +85,16 @@
   let pendingParentId = null;
   let pendingMention = null;
 
+  /**
+   * id -> parentId, for every marked comment this page has seen.
+   *
+   * Kept here rather than asked for over postMessage because it is needed
+   * *synchronously*, inside the fetch patch, to repair an outgoing edit before
+   * it leaves the browser. Only real parents are recorded: a comment whose
+   * marker has already been lost must not overwrite what we knew about it.
+   */
+  const knownParents = new Map();
+
   window.addEventListener('message', (ev) => {
     if (ev.source !== window) return;
     const msg = ev.data;
@@ -102,6 +112,7 @@
   // -------------------------------------------------------------- outbound
 
   const COMMENT_POST_RE = /\/actions\/comments/;
+  const ACTION_ID_RE = /\/actions\/([0-9a-f]{24})(?:[/?#]|$)/i;
 
   function isCommentPost(url, method) {
     return (
@@ -111,16 +122,41 @@
     );
   }
 
-  /** Rewrite whichever body shape Trello happens to use. */
-  function stampBody(body, parentId) {
+  /**
+   * Editing a comment is `PUT /1/actions/<id>` with the full replacement text.
+   * The marker lives *in* that text, and Trello's editor has no reason to
+   * preserve an invisible character it knows nothing about — so saving an edit
+   * silently stripped the marker and the reply fell out of its thread, taking
+   * its own replies with it. Re-stamping on the way out keeps the edit lossless
+   * for everyone, not just for the browser that happens to remember the parent.
+   */
+  function editedCommentId(url, method) {
+    if (String(method || 'GET').toUpperCase() !== 'PUT') return null;
+    const m = String(url || '').match(ACTION_ID_RE);
+    return m ? m[1].toLowerCase() : null;
+  }
+
+  /** Re-attach a marker that isn't there any more. Never adds an @mention. */
+  function restore(text, parentId) {
+    const out = String(text == null ? '' : text);
+    if (MARKER_RE.test(out)) return out; // the edit kept it; leave it alone
+    const marker = encodeMarker(parentId);
+    return marker ? out + marker : out;
+  }
+
+  /**
+   * Rewrite whichever body shape Trello happens to use, applying `transform`
+   * to the `text` field wherever it turns up.
+   */
+  function rewriteBody(body, transform) {
     if (body instanceof URLSearchParams) {
       if (!body.has('text')) return { body, done: false };
-      body.set('text', stamp(body.get('text'), parentId));
+      body.set('text', transform(body.get('text')));
       return { body, done: true };
     }
     if (typeof FormData !== 'undefined' && body instanceof FormData) {
       if (!body.has('text')) return { body, done: false };
-      body.set('text', stamp(body.get('text'), parentId));
+      body.set('text', transform(body.get('text')));
       return { body, done: true };
     }
     if (typeof body === 'string' && body.length) {
@@ -129,7 +165,7 @@
         try {
           const parsed = JSON.parse(body);
           if (parsed && typeof parsed.text === 'string') {
-            parsed.text = stamp(parsed.text, parentId);
+            parsed.text = transform(parsed.text);
             return { body: JSON.stringify(parsed), done: true };
           }
         } catch (_) {
@@ -141,7 +177,7 @@
       try {
         const params = new URLSearchParams(body);
         if (params.has('text')) {
-          params.set('text', stamp(params.get('text'), parentId));
+          params.set('text', transform(params.get('text')));
           return { body: params.toString(), done: true };
         }
       } catch (_) {
@@ -149,6 +185,10 @@
       }
     }
     return { body, done: false };
+  }
+
+  function stampBody(body, parentId) {
+    return rewriteBody(body, (t) => stamp(t, parentId));
   }
 
   /** Trello also accepts ?text= in the query string. */
@@ -209,6 +249,7 @@
       const raw = node.data.text;
       if (typeof raw === 'string') {
         const { parentId, text } = decodeMarker(raw);
+        if (parentId) knownParents.set(node.id, parentId);
         const creator = creatorOf(node);
         out.push({
           id: node.id,
@@ -257,6 +298,13 @@
         const url = typeof request === 'string' ? request : request && request.url;
         const method =
           (options && options.method) || (request && request.method) || 'GET';
+
+        // An edit rewrites the comment's whole text, marker included.
+        const editId = editedCommentId(url, method);
+        if (editId && knownParents.has(editId) && options && 'body' in options) {
+          const res = rewriteBody(options.body, (t) => restore(t, knownParents.get(editId)));
+          if (res.done) options = Object.assign({}, options, { body: res.body });
+        }
 
         if (pendingParentId && isCommentPost(url, method)) {
           const parentId = pendingParentId;
@@ -315,6 +363,12 @@
 
     XHR.prototype.send = function (body) {
       try {
+        const editId = editedCommentId(this.__ttUrl, this.__ttMethod);
+        if (editId && knownParents.has(editId)) {
+          const res = rewriteBody(body, (t) => restore(t, knownParents.get(editId)));
+          if (res.done) body = res.body;
+        }
+
         if (pendingParentId && isCommentPost(this.__ttUrl, this.__ttMethod)) {
           const res = stampBody(body, pendingParentId);
           if (res.done) {

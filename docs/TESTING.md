@@ -138,4 +138,10 @@ removes cleanly; with-replies leaves `[deleted]`; empty deleted ancestors don't
 stack; leaf deletion clears tombstones) · reload persistence · marker-loss
 degradation (a reply that loses its marker becomes a top-level comment) ·
 **abandoned reply must not taint the next comment** (clear the composer after a
-Reply click, post something else — it must not thread or `@mention`).
+Reply click, post something else — it must not thread or `@mention`) ·
+**live cross-user rendering** (someone else's comment must thread without you
+navigating) · **editing must not break threading** (edit a reply's text; it must
+stay in its thread) · **the @mention must appear in the composer on the second
+and later replies of a page, not only the first**.
+
+Suites `01`–`04` in `test/browser/` cover the last three automatically.

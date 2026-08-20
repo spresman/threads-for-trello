@@ -23,7 +23,9 @@ Trello comments have no parent field, so a reply records its parent's id as an *
 
 Everything stays a real Trello comment, so **notifications, mentions, reactions, editing, mobile and the REST API all keep working**. Uninstall the extension and the same conversation simply reads as a flat list. Nothing is stored on any server; there is no server.
 
-The trade-off: zero-width characters can be stripped by copy/paste or by editing a comment in some clients. A reply that loses its marker degrades to a normal top-level comment rather than disappearing — but it does quietly leave its thread.
+Editing a comment would normally destroy the marker — Trello's editor replaces the whole text and has no reason to preserve an invisible character. The extension re-attaches it as the edit is sent, so editing is lossless for everyone reading the card, not just for you.
+
+The remaining trade-off: text edited somewhere the extension isn't running, or retyped from a copy/paste, can still lose its marker. A reply that does degrades to a normal top-level comment rather than disappearing — but it does quietly leave its thread.
 
 **Worth telling your team:** the extension writes invisible characters into comment text. It's their own content in their own workspace, but people should know rather than discover it.
 
@@ -61,7 +63,7 @@ Click the extension icon:
 node test/roundtrip.test.js
 ```
 
-21 tests over the marker engine: injection across every request shape Trello uses, `@mention` handling, full encode → API → decode round-trips, and the live WebSocket path.
+25 tests over the marker engine: injection across every request shape Trello uses, `@mention` handling, full encode → API → decode round-trips, the live WebSocket path, and marker repair on edit.
 
 There is also an automated two-account browser suite in `test/browser/` that drives live Trello over CDP.
 

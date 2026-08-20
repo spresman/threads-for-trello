@@ -341,6 +341,103 @@ pending.push(
   })
 );
 
+// ------------------------------------------------------ edit-repair tests
+
+console.log('\noutbound: repairing edits');
+
+const CHILD_ID = '60b1c2d3e4f5a6b7c8d9e0f9';
+
+/**
+ * Drive a full session: post a reply (to capture a real marker), let the
+ * interceptor see that comment in a response, then edit it and report the body
+ * that actually went out.
+ */
+function editSession({ seed = true, editText = 'rewritten', mention = null } = {}) {
+  const sent = [];
+  let stamped = null;
+  let phase = 'post';
+
+  const { win, inject } = makeContext((input, init) => {
+    const url = typeof input === 'string' ? input : input && input.url;
+    sent.push({ url, method: (init && init.method) || 'GET', body: init && init.body });
+    if (phase === 'post') stamped = new URLSearchParams(init.body).get('text');
+    const payload =
+      phase === 'seed'
+        ? JSON.stringify([
+            {
+              id: CHILD_ID,
+              type: 'commentCard',
+              date: '2026-08-20T10:00:00.000Z',
+              memberCreator: { username: 'sam', fullName: 'Sam' },
+              data: { text: stamped, card: { id: 'card9' } },
+            },
+          ])
+        : '';
+    return Promise.resolve({ clone: () => ({ text: () => Promise.resolve(payload) }) });
+  });
+
+  inject({ __tt: 'content', type: 'set-parent', parentId: PARENT_ID, mention });
+  win.fetch(CARD_URL, { method: 'POST', body: 'text=original' });
+
+  return Promise.resolve()
+    .then(() => {
+      if (!seed) return null;
+      phase = 'seed';
+      return win.fetch('https://api.trello.com/1/cards/card9/actions');
+    })
+    .then(() => new Promise((r) => setTimeout(r, 0)))
+    .then(() => {
+      phase = 'edit';
+      // Re-arm a mention to prove an edit never picks one up.
+      if (mention) inject({ __tt: 'content', type: 'set-parent', parentId: PARENT_ID, mention });
+      return win.fetch(`https://api.trello.com/1/actions/${CHILD_ID}`, {
+        method: 'PUT',
+        body: JSON.stringify({ text: editText, dsc: 'tok' }),
+      });
+    })
+    .then(() => ({ sent, stamped, put: sent[sent.length - 1] }));
+}
+
+pending.push(
+  editSession().then(({ put, stamped }) => {
+    check('editing a reply re-attaches the marker it would have lost', () => {
+      const text = JSON.parse(put.body).text;
+      assert.ok(text.startsWith('rewritten'), 'edit text was mangled: ' + JSON.stringify(text));
+      // The marker the original post carried must be back on the edited text.
+      const marker = stamped.slice(stamped.indexOf('⁠'));
+      assert.ok(text.endsWith(marker), 'marker was not restored');
+    });
+  })
+);
+
+pending.push(
+  editSession({ seed: false }).then(({ put }) => {
+    check('editing a comment we never saw is left untouched', () => {
+      assert.strictEqual(JSON.parse(put.body).text, 'rewritten');
+    });
+  })
+);
+
+pending.push(
+  editSession({ mention: 'alexh' }).then(({ put }) => {
+    check('an edit never picks up an @mention', () => {
+      assert.ok(!/@alexh/.test(JSON.parse(put.body).text), 'edit gained a mention');
+    });
+  })
+);
+
+pending.push(
+  editSession().then(({ stamped }) =>
+    editSession({ editText: stamped }).then(({ put }) => {
+      check('an edit that kept the marker does not get a second one', () => {
+        const text = JSON.parse(put.body).text;
+        const fences = (text.match(/⁠/g) || []).length;
+        assert.strictEqual(fences, 2, 'expected exactly one marker, saw ' + fences / 2);
+      });
+    })
+  )
+);
+
 // ------------------------------------------------------- websocket tests
 
 console.log('\ninbound: live WebSocket frames');
