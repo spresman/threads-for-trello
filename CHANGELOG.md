@@ -4,6 +4,24 @@ Versions here match the `version` in `manifest.json`, which is what Chrome and
 the Web Store use to decide whether a user is out of date. Each release is
 tagged `v<version>` in git.
 
+## [0.3.1] - 2026-08-20
+
+### Fixed
+
+- **A thread reported one more reply than it had rows, after deleting a comment
+  that had replies.** A comment deleted during the session stays in the
+  extension's `comments` map — the API described it before it went — so it was
+  already filed under its parent when the tombstone pass filed it a second time.
+  The same id appeared twice in the parent's child list, so "2 replies" read as
+  "3". Reloading dropped the stale entry and the count corrected itself, which
+  is exactly what made it look like a rendering glitch rather than a bug.
+
+### Added
+
+- `test/browser/05-structure.mjs` — the depth cap, collapse/expand, and what the
+  reply count counts (direct replies only, tombstones included), checked live on
+  both browsers and after a reload.
+
 ## [0.3.0] - 2026-08-20
 
 ### Fixed

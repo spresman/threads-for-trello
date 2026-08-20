@@ -574,6 +574,20 @@
       }
       if (!children.has(anchor)) children.set(anchor, []);
       const arr = children.get(anchor);
+      // A comment deleted during this session is still in `comments` — the API
+      // told us about it before it went — so the pass above has already filed it
+      // under this very parent. Filing it again left the same id in the list
+      // twice, and the thread reported one more reply than it had rows to show.
+      // A reload dropped the stale entry and the count silently corrected
+      // itself, which is what made this look like a rendering glitch.
+      //
+      // Only this parent's list is checked: if the deleted comment's own parent
+      // was deleted too, the stale entry sits under a parent that isn't
+      // rendered, and the tombstone genuinely does need adding here.
+      if (arr.includes(gid)) {
+        parentOf.set(gid, anchor);
+        continue;
+      }
       const d = ghostDate(gid);
       let at = arr.findIndex((s) => String((comments.get(s) || {}).date || '') > d);
       if (at < 0) at = arr.length;
