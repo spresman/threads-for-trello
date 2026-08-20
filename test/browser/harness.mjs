@@ -47,7 +47,85 @@ export function interceptorLive(s) {
   return s.page.evaluate(() => !/\[native code\]/.test(String(window.fetch)));
 }
 
+// -------------------------------------------------------- extension storage
+
+/**
+ * The extension's own settings and memory live in chrome.storage, which page
+ * scripts cannot touch — content scripts run in an isolated world. The way in
+ * is one of the extension's *own* pages, where the chrome.* APIs exist.
+ *
+ * Finding its id is the awkward part: an extension loaded with
+ * --load-extension is not recorded in the profile's Preferences file, so it has
+ * to be read off chrome://extensions. That page is entirely custom elements,
+ * and Playwright's selector engine pierces open shadow roots, which plain
+ * page.evaluate does not.
+ */
+const extIds = new Map();
+export async function extensionId(s) {
+  if (extIds.has(s.port)) return extIds.get(s.port);
+  const ctx = s.browser.contexts()[0];
+  const page = await ctx.newPage();
+  try {
+    await page.goto('chrome://extensions/', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1200);
+    const id = await page.locator('extensions-item').first().getAttribute('id');
+    if (!id) throw new Error('no unpacked extension found on chrome://extensions');
+    extIds.set(s.port, id);
+    return id;
+  } finally {
+    await page.close();
+  }
+}
+
+/** Run `fn` inside an extension page, where chrome.storage is reachable. */
+async function inExtension(s, fn, arg) {
+  const id = await extensionId(s);
+  const ctx = s.browser.contexts()[0];
+  const page = await ctx.newPage();
+  try {
+    await page.goto(`chrome-extension://${id}/src/popup.html`, { waitUntil: 'domcontentloaded' });
+    return await page.evaluate(fn, arg);
+  } finally {
+    await page.close();
+  }
+}
+
+/**
+ * Write settings. threads.js listens on chrome.storage.onChanged for the sync
+ * area and re-renders, so this takes effect without a reload.
+ */
+export function setSettings(s, values) {
+  return inExtension(s, (v) => new Promise((r) => chrome.storage.sync.set(v, () => r(true))), values);
+}
+
+export function getSettings(s) {
+  return inExtension(s, () => new Promise((r) => chrome.storage.sync.get(null, r)));
+}
+
+/** Back to manifest defaults. */
+export function resetSettings(s) {
+  return inExtension(s, () => new Promise((r) => chrome.storage.sync.clear(() => r(true))));
+}
+
+/**
+ * Forget which parent every deleted comment had — what a browser opening a card
+ * for the first time after a deletion would know, i.e. nothing.
+ */
+export function forgetParents(s) {
+  return inExtension(s, () => new Promise((r) => chrome.storage.local.remove('tt:parents', () => r(true))));
+}
+
 // ------------------------------------------------------------------ reading
+
+/** Horizontal offset actually applied to a row, in px. */
+export function indentOf(s, needle) {
+  return s.page.evaluate((t) => {
+    const row = Array.from(document.querySelectorAll('[data-tt-id]')).find((n) => n.innerText.includes(t));
+    if (!row) return null;
+    const m = new DOMMatrixReadOnly(getComputedStyle(row).transform);
+    return Math.round(m.m41);
+  }, needle);
+}
 
 /** The full rendered tree, as the extension sees it. */
 export function readTree(s) {

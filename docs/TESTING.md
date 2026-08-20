@@ -34,11 +34,19 @@ must be restarted after every edit or you will be testing the old build.
 read the extension's DOM contract (`[data-tt-id]`, `[data-tt-depth]`,
 `[data-tt="reply"]`, `.tt-ghost`) rather than visible text.
 
-Two things that will waste an hour if you don't know them:
+Three things that will waste an hour if you don't know them:
 
 - Our reply control clones Trello's own button class, so it inherits Trello's
   hover gating. You must `hover()` the row before the control is clickable.
 - Each suite creates its own card, so runs never depend on leftovers.
+- The extension's settings and its tombstone memory live in `chrome.storage`,
+  which page scripts cannot reach — content scripts run in an isolated world.
+  `harness.mjs` gets in by opening one of the extension's *own* pages
+  (`setSettings`, `getSettings`, `resetSettings`, `forgetParents`). Finding the
+  extension id is the awkward part: an extension loaded with `--load-extension`
+  is not written to the profile's Preferences, so the id is read off
+  `chrome://extensions`, which only works because Playwright's selectors pierce
+  shadow roots. Plain `page.evaluate` cannot see that page's contents.
 
 ## Manual / agent-driven browser testing
 
@@ -154,5 +162,6 @@ The suites in `test/browser/`:
 | `04-editing` | marker survival when a comment is edited |
 | `05-structure` | depth cap, collapse/expand, direct-reply counts |
 | `06-reply-target` | a reply landing where it was aimed when the feed moves mid-compose |
+| `07-settings` | flat mode, `maxDepth`, `indentPx`, applied live and after reload |
 
 Run them all with `npm run test:live` (after `npm run browsers`).

@@ -12,7 +12,7 @@
  */
 import {
   attach, openCard, createCard, post, replyVia, probe, watch, readTree,
-  ghosts, deleteComment, reload, rawText, stamp, record, summary,
+  ghosts, deleteComment, reload, rawText, forgetParents, stamp, record, summary,
 } from './harness.mjs';
 
 const LIST = '6a8508bd571817194e5ba0a4';
@@ -122,10 +122,33 @@ for (const [who, sess] of [['A', a], ['B', b]]) {
     `depth=${(await probe(sess, GRAND)).depth} (expected 2)`);
 }
 
-// A browser opening the card for the *first* time after the deletion is not
-// covered here: it needs virgin extension storage, which means a third profile.
-// That case is a known, documented limitation (see README), not a regression —
-// the tombstone lands at top level because nothing ever recorded its parent.
+// ------------------------------- 5. a browser that never saw the comment
+console.log('\n--- B forgets what it learned: a first-time viewer ---');
+// Exactly what a fresh install, or a different machine, would know: nothing.
+// Trello hard-deletes the action, so the server has no record of the parent
+// either, and the tombstone has nowhere to anchor.
+await forgetParents(b);
+await reload(b);
+
+const gFresh = await ghosts(b);
+const tombFresh = gFresh.find((x) => x.id === ids.child);
+record('a first-time viewer still sees the tombstone, so replies keep a parent',
+  Boolean(tombFresh),
+  `tombstones=${JSON.stringify(gFresh)}`);
+record('the grandchild stays attached to that tombstone',
+  (await probe(b, GRAND)).depth === (tombFresh ? tombFresh.depth + 1 : -99),
+  `tombstone depth=${tombFresh?.depth} grandchild depth=${(await probe(b, GRAND)).depth}`);
+
+// The documented limitation: with nothing remembered, the tombstone cannot be
+// placed under the root it belonged to and surfaces at top level instead.
+record('KNOWN LIMITATION: without memory the tombstone floats to top level',
+  tombFresh?.depth === 0 ? null : tombFresh?.depth === 1,
+  tombFresh?.depth === 0
+    ? 'depth=0 — as documented in the README; the thread still holds together'
+    : `depth=${tombFresh?.depth} — better than documented`);
+
+// Put B's memory back so later runs are not affected by this one.
+await reload(b);
 
 console.log('\nfinal tree (A):');
 console.dir(await readTree(a), { depth: null });
