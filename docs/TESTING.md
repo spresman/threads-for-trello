@@ -144,4 +144,15 @@ navigating) · **editing must not break threading** (edit a reply's text; it mus
 stay in its thread) · **the @mention must appear in the composer on the second
 and later replies of a page, not only the first**.
 
-Suites `01`–`04` in `test/browser/` cover the last three automatically.
+The suites in `test/browser/`:
+
+| suite | covers |
+|---|---|
+| `01-live-updates` | someone else's comment threading live, over the WebSocket |
+| `02-deletion` | tombstones, across both accounts and reloads |
+| `03-permissions` | ownership and `@mention` on boards in both admin/normal directions |
+| `04-editing` | marker survival when a comment is edited |
+| `05-structure` | depth cap, collapse/expand, direct-reply counts |
+| `06-reply-target` | a reply landing where it was aimed when the feed moves mid-compose |
+
+Run them all with `npm run test:live` (after `npm run browsers`).
