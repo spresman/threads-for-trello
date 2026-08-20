@@ -11,7 +11,34 @@ node test/roundtrip.test.js
 ```
 
 Covers the marker engine: injection across every request shape Trello uses,
-`@mention` de-duplication, and full encode → API → decode round-trips.
+`@mention` de-duplication, full encode → API → decode round-trips, and the
+live-WebSocket path (frame harvesting, author resolution from
+`display.entities`, and that patching `WebSocket` preserves `instanceof` and
+the readyState constants).
+
+## Automated browser suite
+
+`test/browser/` drives two logged-in accounts against live Trello over CDP.
+
+```
+powershell -ExecutionPolicy Bypass -File test/browser/relaunch.ps1   # start/restart both browsers
+node test/browser/01-live-updates.mjs                                # run a suite
+```
+
+`relaunch.ps1` is also how you pick up a code change — Chrome does not
+re-inject a content script into tabs that are already open, so the browsers
+must be restarted after every edit or you will be testing the old build.
+
+`harness.mjs` holds the shared plumbing: `attach`, `openCard`, `post`,
+`replyVia`, `probe`, `watch`, `readTree`, `rawText`, `decodeMarker`. Assertions
+read the extension's DOM contract (`[data-tt-id]`, `[data-tt-depth]`,
+`[data-tt="reply"]`, `.tt-ghost`) rather than visible text.
+
+Two things that will waste an hour if you don't know them:
+
+- Our reply control clones Trello's own button class, so it inherits Trello's
+  hover gating. You must `hover()` the row before the control is clickable.
+- Each suite creates its own card, so runs never depend on leftovers.
 
 ## Manual / agent-driven browser testing
 

@@ -170,6 +170,33 @@
    * comments between /cards/:id/actions, /batch, and other shapes, so we walk
    * the whole structure rather than pinning to one endpoint.
    */
+  /**
+   * Who wrote this action?
+   *
+   * REST responses carry a populated `memberCreator`. WebSocket deltas do not —
+   * they carry only `idMemberCreator`, and put the human-readable identity
+   * under `display.entities.memberCreator` instead. Without this fallback a comment
+   * that arrived over the socket threads correctly but has no username, so
+   * replying to it silently skips the @mention that notifies its author.
+   */
+  function creatorOf(node) {
+    // Any populated memberCreator wins, even one carrying only a display name:
+    // REST payloads vary in which fields they include.
+    if (node.memberCreator && (node.memberCreator.username || node.memberCreator.fullName)) {
+      return node.memberCreator;
+    }
+    const viaDisplay =
+      node.display && node.display.entities && node.display.entities.memberCreator;
+    if (viaDisplay && viaDisplay.username) return viaDisplay;
+    if (Array.isArray(node.entities)) {
+      const hit = node.entities.find(
+        (e) => e && e.type === 'member' && e.username && e.id === node.idMemberCreator
+      );
+      if (hit) return hit;
+    }
+    return null;
+  }
+
   function harvest(node, out, depth) {
     if (!node || depth > 8) return;
     if (Array.isArray(node)) {
@@ -182,19 +209,18 @@
       const raw = node.data.text;
       if (typeof raw === 'string') {
         const { parentId, text } = decodeMarker(raw);
+        const creator = creatorOf(node);
         out.push({
           id: node.id,
           parentId,
           text,
           date: node.date || null,
-          cardId: (node.data.card && node.data.card.id) || null,
-          author:
-            (node.memberCreator &&
-              (node.memberCreator.fullName || node.memberCreator.username)) ||
-            null,
+          cardId:
+            (node.data.card && node.data.card.id) || node.data.idCard || null,
+          author: (creator && (creator.fullName || creator.text || creator.username)) || null,
           // Kept separate from `author`: @mentions need the handle, not the
           // display name.
-          username: (node.memberCreator && node.memberCreator.username) || null,
+          username: (creator && creator.username) || null,
         });
       }
     }
@@ -318,6 +344,42 @@
 
       return origSend.call(this, body);
     };
+  }
+
+  /**
+   * Trello pushes live board activity over `wss://trello.com/1/Session/socket`.
+   * A comment posted by someone else while your tab is open arrives *only*
+   * there — it never touches fetch or XHR, so before this tap the extension
+   * simply never learned about it. React rendered the comment, threads.js saw
+   * an id it had no data for, and refused to claim the row: no threading, no
+   * reply control, no @mention. It appeared to fix itself "later", which was
+   * really the next unrelated REST call happening to carry the same action.
+   *
+   * A Proxy rather than a wrapper function so `instanceof`, the readyState
+   * constants and everything else about WebSocket stay exactly as they were.
+   * The listener is passive: it reads frames and never blocks, alters or
+   * consumes them.
+   */
+  const OrigWebSocket = window.WebSocket;
+  if (typeof OrigWebSocket === 'function') {
+    window.WebSocket = new Proxy(OrigWebSocket, {
+      construct(target, args, newTarget) {
+        const ws = Reflect.construct(target, args, newTarget);
+        try {
+          ws.addEventListener('message', (ev) => {
+            try {
+              // Binary frames are Trello's own protocol chatter, never actions.
+              if (typeof ev.data === 'string') inspectPayload(ev.data);
+            } catch (_) {
+              /* never break Trello */
+            }
+          });
+        } catch (_) {
+          /* ignore */
+        }
+        return ws;
+      },
+    });
   }
 
   send('ready', {});

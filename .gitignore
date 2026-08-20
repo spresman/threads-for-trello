@@ -10,5 +10,9 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Not used today, but keeps an accidental `npm install` out of the repo
 node_modules/
+
+# Browser profiles created by the test harness (docs/TESTING.md). These hold
+# live Trello sessions — never commit them.
+profile*/
+test-results/

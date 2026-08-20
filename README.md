@@ -51,7 +51,7 @@ Click the extension icon:
 
 ## Limitations
 
-- Threading only covers comments the extension has seen the API load, so very long histories thread progressively as pages load.
+- Very long comment histories thread progressively as Trello pages them in.
 - A tombstone's position is remembered per-browser. Someone opening a card for the first time *after* a deletion sees that tombstone at top level.
 - Chrome, Edge and Brave only. Firefox and Safari would each need a port.
 
@@ -61,7 +61,9 @@ Click the extension icon:
 node test/roundtrip.test.js
 ```
 
-15 tests over the marker engine: injection across every request shape Trello uses, `@mention` handling, and full encode → API → decode round-trips.
+21 tests over the marker engine: injection across every request shape Trello uses, `@mention` handling, full encode → API → decode round-trips, and the live WebSocket path.
+
+There is also an automated two-account browser suite in `test/browser/` that drives live Trello over CDP.
 
 For the DOM behaviour — threading, guides, collapse, the composer/mention path and tombstones — see [`docs/TESTING.md`](docs/TESTING.md), which covers driving the extension against live Trello (including why current Chrome needs **Chrome for Testing** to load it unpacked).
 

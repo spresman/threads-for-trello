@@ -14,6 +14,27 @@ const assert = require('assert');
 
 const SRC = path.join(__dirname, '..', 'src', 'interceptor.js');
 
+/**
+ * Stand-in for the socket Trello opens to push live board activity. The
+ * interceptor wraps this in a Proxy; `emit` plays a server frame back through
+ * whatever listener it attached.
+ */
+class FakeWebSocket {
+  constructor(url) {
+    this.url = url;
+    this.readyState = FakeWebSocket.OPEN;
+    this._listeners = [];
+  }
+  addEventListener(type, fn) {
+    if (type === 'message') this._listeners.push(fn);
+  }
+  emit(data) {
+    for (const fn of this._listeners) fn({ data });
+  }
+}
+FakeWebSocket.CONNECTING = 0;
+FakeWebSocket.OPEN = 1;
+
 function makeContext(fetchImpl) {
   const listeners = [];
   const outbox = [];
@@ -28,6 +49,7 @@ function makeContext(fetchImpl) {
     },
     fetch: fetchImpl,
     XMLHttpRequest: function () {},
+    WebSocket: FakeWebSocket,
   };
   win.window = win;
 
@@ -318,6 +340,109 @@ pending.push(
     );
   })
 );
+
+// ------------------------------------------------------- websocket tests
+
+console.log('\ninbound: live WebSocket frames');
+
+/** The exact envelope Trello pushes for a new comment, captured from the wire. */
+function socketFrame(text, extra) {
+  return JSON.stringify({
+    notify: {
+      event: 'updateModels',
+      typeName: 'Action',
+      deltas: [
+        Object.assign(
+          {
+            id: '60b1c2d3e4f5a6b7c8d9e0f3',
+            idMemberCreator: '6a7cc7bd3a34a51309785d98',
+            type: 'commentCard',
+            date: '2026-08-20T17:43:18.024Z',
+            data: { idCard: 'card9', idAuthor: '6a7cc7bd3a34a51309785d98', text },
+            display: {
+              translationKey: 'action_comment_on_card',
+              entities: {
+                memberCreator: {
+                  type: 'member',
+                  id: '6a7cc7bd3a34a51309785d98',
+                  username: 'sampresman1',
+                  text: 'Sam Presman',
+                },
+              },
+            },
+          },
+          extra || {}
+        ),
+      ],
+    },
+  });
+}
+
+/** Open a socket through the (patched) constructor and play a frame down it. */
+function pushFrame(frame) {
+  const captured = [];
+  const { win } = makeContext(() => Promise.resolve({ clone: () => ({ text: () => Promise.resolve('') }) }));
+  const orig = win.postMessage;
+  win.postMessage = (d) => {
+    captured.push(d);
+    orig(d);
+  };
+  const ws = new win.WebSocket('wss://trello.com/1/Session/socket');
+  ws.emit(frame);
+  return captured.find((m) => m && m.type === 'comments');
+}
+
+check('a comment arriving over the socket is harvested', () => {
+  const msg = pushFrame(socketFrame('hello from the socket'));
+  assert.ok(msg, 'no comments message was emitted for a socket frame');
+  assert.strictEqual(msg.comments[0].id, '60b1c2d3e4f5a6b7c8d9e0f3');
+  assert.strictEqual(msg.comments[0].text, 'hello from the socket');
+});
+
+check('socket deltas resolve the author from display.entities', () => {
+  const msg = pushFrame(socketFrame('who wrote this'));
+  // Without this the reply @mention is silently skipped: mentionFor() needs
+  // a username, and socket deltas carry only idMemberCreator.
+  assert.strictEqual(msg.comments[0].username, 'sampresman1');
+  assert.strictEqual(msg.comments[0].author, 'Sam Presman');
+});
+
+check('a marked reply arriving over the socket keeps its parent', () => {
+  // Same encoder the outbound path uses, so this is a true round-trip.
+  let stamped = null;
+  const { win, inject } = makeContext((url, init) => {
+    stamped = new URLSearchParams(init.body).get('text');
+    return Promise.resolve({ clone: () => ({ text: () => Promise.resolve('') }) });
+  });
+  inject({ __tt: 'content', type: 'set-parent', parentId: PARENT_ID });
+  win.fetch(CARD_URL, { method: 'POST', body: 'text=threaded' });
+
+  const msg = pushFrame(socketFrame(stamped));
+  assert.strictEqual(msg.comments[0].parentId, PARENT_ID);
+  assert.strictEqual(msg.comments[0].text, 'threaded');
+});
+
+check('the socket delta carries the card id', () => {
+  const msg = pushFrame(socketFrame('scoped'));
+  assert.strictEqual(msg.comments[0].cardId, 'card9');
+});
+
+check('non-comment socket chatter is ignored', () => {
+  assert.strictEqual(
+    pushFrame(JSON.stringify({ notify: { event: 'updateModels', typeName: 'Board', deltas: [{ id: 'b1' }] } })),
+    undefined
+  );
+  assert.strictEqual(pushFrame('{"reqid":0,"result":true}'), undefined);
+  assert.strictEqual(pushFrame('not json at all'), undefined);
+});
+
+check('patching WebSocket preserves instanceof and its constants', () => {
+  const { win } = makeContext(() => Promise.resolve({ clone: () => ({ text: () => Promise.resolve('') }) }));
+  const ws = new win.WebSocket('wss://trello.com/1/Session/socket');
+  assert.ok(ws instanceof win.WebSocket, 'instanceof broke');
+  assert.strictEqual(win.WebSocket.OPEN, 1, 'readyState constants were lost');
+  assert.strictEqual(ws.url, 'wss://trello.com/1/Session/socket');
+});
 
 Promise.all(pending).then(() => {
   console.log('\n' + passed + ' passed' + (process.exitCode ? ', some FAILED' : '') + '\n');

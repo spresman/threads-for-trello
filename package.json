@@ -1,11 +1,17 @@
 {
   "name": "threads-for-trello",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Collapsible threaded replies on Trello cards, built on native Trello comments.",
   "private": true,
   "scripts": {
     "test": "node test/roundtrip.test.js",
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "browsers": "powershell -ExecutionPolicy Bypass -File test/browser/relaunch.ps1",
+    "test:live": "node test/browser/01-live-updates.mjs"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "playwright": "^1.62.1",
+    "playwright-core": "^1.62.1"
+  }
 }
