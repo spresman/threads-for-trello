@@ -326,6 +326,36 @@ export function createCard(s, idList, name) {
 export async function reload(s, ms = 6000) {
   await s.page.reload({ waitUntil: 'domcontentloaded' });
   await s.page.waitForTimeout(ms);
+  await settled(s);
+}
+
+/**
+ * Wait until the extension's pass has landed and stopped moving.
+ *
+ * A flat sleep after a reload is not enough, and fails in a way that reads as a
+ * product bug rather than a slow page: Trello finishes rendering the feed — all
+ * nine comments, every permalink present — a second or so BEFORE the content
+ * script has claimed anything. An assertion timed off the sleep alone sees zero
+ * claimed rows, so a comment that is merely collapsed comes back as missing
+ * entirely. Measured at 16 of 25 reloads on this machine.
+ *
+ * Two consecutive identical non-zero counts is the cheapest proof the pass is
+ * done. This only ever adds time to the existing sleep, so no suite that was
+ * relying on that delay for something else loses it.
+ */
+async function settled(s, timeoutMs = 15000) {
+  const t0 = Date.now();
+  let last = -1;
+  let stable = 0;
+  while (Date.now() - t0 < timeoutMs) {
+    const n = await s.page.evaluate(
+      () => document.querySelectorAll('[data-tt-id]').length
+    );
+    stable = n > 0 && n === last ? stable + 1 : 0;
+    if (stable >= 2) return;
+    last = n;
+    await s.page.waitForTimeout(300);
+  }
 }
 
 /** Every tombstone currently rendered, with its depth. */
