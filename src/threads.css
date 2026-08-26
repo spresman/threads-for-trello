@@ -93,10 +93,44 @@
 /* (Rails, stems, arcs and parent lines are all segments of the single path
    above — no per-segment elements exist any more.) */
 
+/* The ring is a positioned pseudo-element, not an `outline`, because it has to
+   win against two different things.
+
+   Neighbouring rows: the ring sits 4px outside the row box, which is inside the
+   rows above and below — there is no gap between them — so their rails would
+   paint over it. `z-index` on the row settles that.
+
+   Its OWN rail: an ancestor's guide runs down through every deeper row, drawn
+   at negative x inside that row's own (deliberately over-wide) SVG. So at depth
+   1 and beyond a rail crosses the ring's left edge, top and bottom. An outline
+   cannot beat a positioned descendant no matter what the row's z-index is —
+   raising the row lifts the rail with it. A pseudo-element can, by outranking
+   the rail's `z-index: 0` inside the row.
+
+   `inset: -4px` with a 2px border reproduces exactly what `outline: 2px` at
+   `outline-offset: 2px` drew: a ring spanning 2px to 4px outside the row. */
 .tt-row--replying {
-  outline: 2px solid var(--tt-accent, #0c66e4);
-  outline-offset: 2px;
+  z-index: 1;
+}
+
+/* `--tt-indent` is the row's own indent, published by the paint loop. The row
+   box keeps its full width when it is translated right, and the content is
+   pulled back by that much to keep every comment's right edge on one line — so
+   the ring has to be pulled back by the same amount or it overhangs the panel
+   and gets clipped on deep threads. */
+.tt-row--replying::after {
+  content: '';
+  position: absolute;
+  /* Equal 6px gaps, measured to what the row actually shows: the avatar's left
+     edge sits 8px inside the row (the guide lane), so `2px` leaves 6px to its
+     left, and subtracting 6 from the indent leaves the same 6px past the
+     comment box's right edge. Aligning to the composer's margin instead was
+     tried and looked wrong — it cuts straight through the avatar. */
+  inset: -4px calc(var(--tt-indent, 0px) - 6px) -4px 2px;
+  border: 2px solid var(--tt-accent, #0c66e4);
   border-radius: 6px;
+  pointer-events: none;
+  z-index: 2;
 }
 
 /* -------------------------------------------------------------- controls */

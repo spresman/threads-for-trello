@@ -743,6 +743,8 @@
     if (!container.dataset.ttDisplay) {
       container.dataset.ttDisplay = getComputedStyle(container).display;
     }
+    reserveScrollbarGutter(container);
+
     const ordersNatively = /flex|grid/.test(container.dataset.ttDisplay);
     container.classList.add('tt-container');
     container.classList.toggle('tt-container--forceflex', !ordersNatively);
@@ -857,6 +859,11 @@
       // to keep every comment's right edge on the same line.
       const contentEl = row.querySelector('[data-testid="card-back-action-container"]');
       if (contentEl) contentEl.style.marginRight = depth ? depth * indent + 'px' : '';
+      // The row's own box keeps its full width, so anything drawn against that
+      // box — the replying ring — would stick out past the content by exactly
+      // this much and be clipped by the panel. Publish it so the CSS can pull
+      // the ring's right edge back onto the same line as everything else.
+      row.style.setProperty('--tt-indent', depth ? depth * indent + 'px' : '0px');
 
       // Tag the avatar so CSS can scale it (uniformly — resizing the button
       // without its inner span turns the circle into an oval).
@@ -955,6 +962,29 @@
    * anchor on position rather than on those buttons. If it's ever absent we
    * create our own row in the same place.
    */
+  /**
+   * Reserve the feed scroller's scrollbar gutter, once.
+   *
+   * Mounting the comment composer makes the panel taller, a vertical scrollbar
+   * appears, and every comment box in the feed loses width at that instant
+   * (measured: 15px) — so clicking Reply visibly squeezed the whole activity
+   * list sideways. Reserving the gutter up front keeps the width identical
+   * whether or not the scrollbar is showing.
+   *
+   * Done here rather than when replying: doing it at click time just moves the
+   * jump earlier instead of removing it.
+   */
+  function reserveScrollbarGutter(container) {
+    for (let n = container; n && n !== document.body; n = n.parentElement) {
+      const cs = getComputedStyle(n);
+      if (!/auto|scroll|overlay/.test(cs.overflowY)) continue;
+      if (n.dataset.ttGutter) return;
+      n.dataset.ttGutter = '1';
+      n.style.scrollbarGutter = 'stable';
+      return;
+    }
+  }
+
   function controlHost(body) {
     const block =
       body.closest('[data-testid="card-back-action-container"]') ||
@@ -1135,6 +1165,10 @@
         // `mention`, so the autoMention setting still means something and this
         // never fires on your own comments (which have no native Reply anyway).
         const row = e.currentTarget.closest('[data-tt-id]');
+        // Hold x still from the click onward: mounting the composer can scroll
+        // the card back sideways, and a deep row is pushed right by
+        // depth * indent, so it would slide out from under the reader.
+        if (row) pinHorizontal(row);
         const native = mention && row && !composerHasText() ? nativeReplyFor(row) : null;
         if (native) {
           native.click(); // Trello inserts the chip and mounts the composer
@@ -1437,7 +1471,9 @@
    */
   function insertMention(editor, username) {
     if (editorText(editor)) return; // don't disturb text already typed
-    editor.focus();
+    // preventScroll everywhere we focus: focusing scrolls its element into view
+    // on BOTH axes, and a deep row overflows horizontally.
+    editor.focus({ preventScroll: true });
     const tag = '@' + username + ' ';
     let ok = false;
     try {
@@ -1471,9 +1507,66 @@
    * correctly threaded and the author correctly notified. It simply looked as
    * though nothing had happened, with no way to tell before pressing Send.
    */
+  /**
+   * Bring `el` to the middle of the view without touching horizontal scroll.
+   *
+   * `scrollIntoView` has no "leave x alone" option: `inline` defaults to
+   * 'nearest', which still scrolls sideways whenever the content overflows —
+   * and it does overflow, because a deep row is pushed right by depth * indent.
+   */
+  function centreVertically(el) {
+    const rect = el.getBoundingClientRect();
+    for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) {
+      const cs = getComputedStyle(n);
+      if (!/auto|scroll|overlay/.test(cs.overflowY)) continue;
+      if (n.scrollHeight <= n.clientHeight + 1) continue;
+      const nr = n.getBoundingClientRect();
+      n.scrollTo({
+        top: n.scrollTop + (rect.top + rect.height / 2) - (nr.top + nr.height / 2),
+        // Pinned explicitly: omitting `left` is documented to hold the current
+        // position, but it is the one axis that must not move here, so say so.
+        left: n.scrollLeft,
+        behavior: 'smooth',
+      });
+      return;
+    }
+    window.scrollTo({
+      top: window.scrollY + rect.top + rect.height / 2 - window.innerHeight / 2,
+      behavior: 'smooth',
+    });
+  }
+
+  /**
+   * Hold horizontal scroll still while the composer mounts.
+   *
+   * focus({preventScroll}) stops *our* scrolling, but mounting Trello's editor
+   * can move the card back sideways on its own, and a deep row overflows, so
+   * there is room to move.
+   */
+  function pinHorizontal(from, ms = 3000) {
+    const pinned = [];
+    for (let n = from; n && n !== document.documentElement; n = n.parentElement) {
+      if (n.scrollWidth > n.clientWidth + 1) pinned.push([n, n.scrollLeft]);
+    }
+    if (!pinned.length) return;
+    let restoring = false;
+    const restore = () => {
+      if (restoring) return; // our own correction re-fires `scroll`
+      restoring = true;
+      for (const [n, x] of pinned) if (n.scrollLeft !== x) n.scrollLeft = x;
+      restoring = false;
+    };
+    for (const [n] of pinned) n.addEventListener('scroll', restore, { passive: true });
+    const tick = setInterval(restore, 50);
+    setTimeout(() => {
+      clearInterval(tick);
+      for (const [n] of pinned) n.removeEventListener('scroll', restore);
+    }, ms);
+  }
+
   function revealComposer() {
     whenEditorReady(document, 2000).then((ed) => {
-      if (ed) ed.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      if (ed) centreVertically(ed);
     });
   }
 
@@ -1485,15 +1578,14 @@
     const scope = el.parentElement || el.closest('form, div');
     // The resting state is a placeholder button; clicking it mounts the editor.
     if (el.tagName === 'BUTTON') el.click();
-    else if (typeof el.focus === 'function') el.focus();
+    else if (typeof el.focus === 'function') el.focus({ preventScroll: true });
 
     // Scroll *after* the editor mounts — it replaces the skeleton and shifts
     // the layout, so scrolling first lands in the wrong place.
     whenEditorReady(scope, 2000).then((ed) => {
-      const target = ed || el;
-      target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      centreVertically(ed || el);
       if (!ed) return;
-      ed.focus();
+      ed.focus({ preventScroll: true });
       if (mention) insertMention(ed, mention);
     });
   }

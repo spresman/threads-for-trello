@@ -4,6 +4,37 @@ Versions here match the `version` in `manifest.json`, which is what Chrome and
 the Web Store use to decide whether a user is out of date. Each release is
 tagged `v<version>` in git.
 
+## [0.3.3] - 2026-08-26
+
+### Fixed
+
+- **The blue ring around the comment you are replying to was cut by the thread
+  guide crossing it.** Comment rows are `position: relative` with `z-index:
+  auto`, which is not a stacking context, so a row's rail — absolutely
+  positioned at `z-index: 0` — painted into the ancestor's positioned layer and
+  landed on top of the ring. Raising the row does not help: it lifts the rail
+  with it. The ring is now a positioned pseudo-element that outranks the rail
+  inside the row, which is the only way an element can win against its own
+  descendant. Measured at depth 3: every rail/ring crossing reads the accent
+  colour where it read the guide's grey before.
+
+- **The ring overhung the panel on deep threads and was clipped.** A row keeps
+  its full width when it is indented — the indent is a transform, and the
+  content is pulled back by an equal margin so every comment's right edge stays
+  on one line. The ring was drawn against the row's box, so it stuck out past
+  the content by exactly the indent. It now follows the content, and holds a
+  6px gap from the avatar's left edge and the comment box's right edge at every
+  depth.
+
+- **Clicking Reply shifted the whole activity feed sideways.** Mounting the
+  composer makes the panel taller, a vertical scrollbar appears, and every
+  comment box in the feed loses its width at that instant (measured: 15px). The
+  scrollbar gutter is now reserved up front, so the width does not change when
+  it appears. Two smaller sources went with it: `scrollIntoView` has no way to
+  say "leave x alone" and scrolled sideways on indented rows, and `focus()`
+  scrolls its element into view on both axes. Replying now scrolls vertically
+  only — verified as zero horizontal movement on every row.
+
 ## [0.3.2] - 2026-08-26
 
 ### Fixed

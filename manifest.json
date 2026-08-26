@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Threads for Trello",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Collapsible threaded replies on Trello cards, built on native Trello comments.",
   "permissions": ["storage"],
   "host_permissions": ["https://trello.com/*"],
