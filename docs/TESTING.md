@@ -163,5 +163,25 @@ The suites in `test/browser/`:
 | `05-structure` | depth cap, collapse/expand, direct-reply counts |
 | `06-reply-target` | a reply landing where it was aimed when the feed moves mid-compose |
 | `07-settings` | flat mode, `maxDepth`, `indentPx`, applied live and after reload |
+| `08-notification` | replying to a comment reached from the notification bell |
 
 Run them all with `npm run test:live` (after `npm run browsers`).
+
+### Two things that cost an afternoon in `08-notification`
+
+**A `#comment-` deep link does not reproduce the notification view.** Pasted into
+the address bar it renders exactly like plain navigation — same DOM, same
+highlight, permalink intact. Only arriving through the bell makes Trello drop the
+notified comment's permalink, which is the whole bug. The suite therefore drives
+the real notification drawer, and clicks the *comment permalink* in it: each
+notification also carries a card-title link, and that one lands on the card
+without the fragment.
+
+**A mention typed into the composer notifies nobody.** Typing `@handle` and
+letting the autocomplete commit it to a chip stores the handle *without* the
+`@` — Trello parses mentions out of the literal text, so the chip version
+generates no notification and leaves the drawer empty. Post through the API with
+a plain-text `@handle` instead. (Typing the whole string in one `type()` call
+also leaves the autocomplete open and Save disabled; a separate `Space` keypress
+commits the chip.) The recipient must also be *away* from the card, or Trello
+marks the notification read on arrival.

@@ -4,6 +4,29 @@ Versions here match the `version` in `manifest.json`, which is what Chrome and
 the Web Store use to decide whether a user is out of date. Each release is
 tagged `v<version>` in git.
 
+## [0.3.2] - 2026-08-26
+
+### Fixed
+
+- **A reply sent from a notification silently left its thread, for good.**
+  Clicking a comment notification opens the card with that comment highlighted,
+  and Trello renders it with `href="#"` where its `#comment-<id>` permalink
+  would be — you are already at it, so it has nowhere to send you. Comment
+  identity comes from that permalink, so the notified comment was the one row on
+  the card the extension never claimed, which left Trello's own Reply showing
+  instead of ours. Trello's Reply prefills the @mention but posts a flat comment,
+  so the reply arrived looking correct — mention and all — while carrying no
+  parent marker. No reload could recover it, because nothing was ever written to
+  recover. The id is still in the URL fragment, so the row is now claimed from
+  there.
+
+### Added
+
+- `test/browser/08-notification.mjs` — replying to a comment reached through the
+  notification bell, including that the notified row keeps its claim while
+  another comment is posting (losing it would tombstone that comment as deleted
+  underneath its own replies).
+
 ## [0.3.1] - 2026-08-20
 
 ### Fixed

@@ -446,7 +446,56 @@
       // Requires the API data too — the parent marker and author live there.
       if (id && comments.has(id)) map.set(body, id);
     }
+    bindNotified(pairs, map);
     return map;
+  }
+
+  /**
+   * Rescue the one comment Trello refuses to identify.
+   *
+   * Arriving from a notification, Trello renders the comment you were notified
+   * about with `href="#"` where its permalink would be — you are already at it,
+   * so it has nowhere to send you. That row then fails every check above and
+   * stays unclaimed for the life of the page: no indent, no reply control, and
+   * worst of all Trello's own Reply left visible. Trello's Reply prefills the
+   * @mention but posts a flat comment, so replying from a notification dropped
+   * the reply out of its thread — permanently, since no marker was ever written
+   * for a reload to find.
+   *
+   * The id is still there: it is the URL fragment that brought us here. That
+   * makes this a second identity supplied by Trello rather than a guess, which
+   * is what keeps it clear of the text and position matching bindRows
+   * deliberately abandoned.
+   *
+   * Claimed on the first pass, where the notified row is the only unbound one.
+   * A comment you post later renders optimistically without a permalink too, so
+   * from then on the row is recognised by the id already stamped on it and holds
+   * its claim through that window. Losing it there would put a deleted-comment
+   * tombstone underneath the comment's own replies while it sat in plain sight.
+   */
+  function bindNotified(pairs, map) {
+    const m = location.hash.match(/#comment-([0-9a-f]{24})/i);
+    const id = m && m[1].toLowerCase();
+    if (!id || !comments.has(id)) return;
+    const target = comments.get(id);
+    for (const bound of map.values()) {
+      // A row carrying the real permalink always wins: if Trello ever recycled
+      // this element for a different comment, that comment binds normally above
+      // and there is nothing left here to hijack.
+      if (bound === id) return;
+      // `comments` is never cleared, so it still holds every id this tab has
+      // seen on any card. Leaving a card does clear the fragment, but rather
+      // than trust that ordering during an SPA transition, refuse an id whose
+      // card disagrees with the rows already bound on this one.
+      const other = comments.get(bound);
+      if (other && other.cardId && target.cardId && other.cardId !== target.cardId) return;
+    }
+
+    const free = pairs.filter((p) => !map.has(p.body));
+    const pick =
+      free.find((p) => p.row.dataset.ttId === id) ||
+      (free.length === 1 ? free[0] : null);
+    if (pick) map.set(pick.body, id);
   }
 
   /**
