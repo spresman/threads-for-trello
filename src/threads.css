@@ -126,7 +126,12 @@
      left, and subtracting 6 from the indent leaves the same 6px past the
      comment box's right edge. Aligning to the composer's margin instead was
      tried and looked wrong — it cuts straight through the avatar. */
-  inset: -4px calc(var(--tt-indent, 0px) - 6px) -4px 2px;
+  /* The left offset is measured from the row's padding box, which Trello
+     shifts left when it highlights a notified comment. `--tt-padl` carries
+     that padding so the ring stays on the content, exactly as the rails do.
+     The highlight pads the right as well, hence `--tt-padr`; both are 0px on
+     every ordinary row. */
+  inset: -4px calc(var(--tt-indent, 0px) - 6px + var(--tt-padr, 0px)) -4px calc(2px + var(--tt-padl, 0px));
   border: 2px solid var(--tt-accent, #0c66e4);
   border-radius: 6px;
   pointer-events: none;

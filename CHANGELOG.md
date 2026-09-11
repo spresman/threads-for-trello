@@ -4,6 +4,33 @@ Versions here match the `version` in `manifest.json`, which is what Chrome and
 the Web Store use to decide whether a user is out of date. Each release is
 tagged `v<version>` in git.
 
+## [0.3.4] - 2026-09-11
+
+### Fixed
+
+- **The thread spine stepped sideways under a comment reached from a
+  notification.** Trello highlights the comment you were notified about by
+  growing its row outward — a 4px left border, 12px of left padding and 16px of
+  right padding — while leaving the content where it was, which is why the
+  comment looks unmoved and only the guides appear to jump. Each row's rails are
+  drawn into an SVG that is absolutely positioned inside it, so they are
+  measured from that row's *padding box*, and the whole design depends on every
+  row sharing that origin: a parent draws its rail at `RAIL_X` and its child
+  draws the matching line at `RAIL_X - indent` while translated right by the
+  same indent, so the two land on one screen x. The highlight moved one row's
+  padding box and took its rail with it, breaking the spine by exactly the
+  padding. Rails are now measured from the row's content box instead. The
+  padding is read off the live computed style rather than assumed, so it is 0
+  on an ordinary row and follows Trello if they ever retune the highlight.
+  Measured on a highlighted parent and its reply: 1064 vs 1076 before, 578 vs
+  578 after.
+
+- **The replying ring was off by the same padding on a highlighted comment.**
+  It is drawn against the row's padding box too. The padding is now published
+  as `--tt-padl` / `--tt-padr` — CSS cannot read an element's own padding —
+  and the ring holds its 2px and 6px gaps on a highlighted row exactly as it
+  does everywhere else.
+
 ## [0.3.3] - 2026-08-26
 
 ### Fixed

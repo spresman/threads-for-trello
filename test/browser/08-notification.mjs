@@ -92,13 +92,52 @@ record('the admin mention posted', typeof askId === 'string', `id=${JSON.stringi
 if (typeof askId !== 'string') process.exit(summary() ? 1 : 0);
 await b.page.waitForTimeout(6000);
 
+/**
+ * Where a row's thread guides actually land on screen, and how much left
+ * padding the row carries.
+ *
+ * Every guide is drawn into an SVG that is `position: absolute` inside its own
+ * row, so its coordinates are relative to that row's padding box. The design
+ * assumes every row shares that origin: a parent draws its rail at RAIL_X and
+ * its child draws the matching line at RAIL_X - indent while translated right
+ * by the same indent, so the two coincide. Trello's notification highlight adds
+ * left padding to one row, which moves that row's padding box and took its rail
+ * with it — a visible step in the spine directly under the highlighted comment.
+ */
+function railGeometry(s, needle) {
+  return s.page.evaluate((t) => {
+    const row = Array.from(document.querySelectorAll('[data-tt-id]'))
+      .find((n) => n.innerText.includes(t));
+    if (!row) return null;
+    const cs = getComputedStyle(row);
+    const svg = row.querySelector(':scope > .tt-rails');
+    return {
+      depth: row.dataset.ttDepth,
+      padL: parseFloat(cs.paddingLeft) || 0,
+      padVar: cs.getPropertyValue('--tt-padl').trim(),
+      railX: svg
+        ? Array.from(svg.querySelectorAll('path'))
+            .map((p) => +p.getBoundingClientRect().left.toFixed(2))
+        : [],
+    };
+  }, needle);
+}
+
 // --------------------------------------------------- arrive through the bell
 await b.page.reload({ waitUntil: 'domcontentloaded' });
 await b.page.waitForTimeout(6000);
 const bell = b.page.locator('[data-testid="header-notifications-button"]').first();
 const bellLabel = await bell.getAttribute('aria-label');
 record('the member has an unread notification', !/^0 /.test(bellLabel || ''), `bell=${bellLabel}`);
-await bell.click({ timeout: 15000 });
+// Dispatched in the page rather than through Playwright: Trello floats a
+// `role="presentation"` layer over the header, and a real click refuses to land
+// on anything underneath it ("intercepts pointer events") until it clears,
+// which it does not reliably do. The bell itself is visible and enabled the
+// whole time, so clicking it directly is the interaction we mean to test.
+await b.page.evaluate(() => {
+  const el = document.querySelector('[data-testid="header-notifications-button"]');
+  if (el) el.click();
+});
 await b.page.waitForTimeout(4000);
 
 const permalink = b.page.locator(`a[href*="#comment-${askId}"]`).first();
@@ -170,6 +209,22 @@ record('the claim survives a reload of the permalink URL',
 const replyAfter = await probe(b, REPLY);
 record('the reply is still threaded after the reload',
   replyAfter.depth === 1, `depth=${replyAfter.depth}`);
+
+// ------------------------------------------- the spine under the highlight
+const gParent = await railGeometry(b, ASKS);
+const gChild = await railGeometry(b, REPLY);
+// Guard against the assertion below going vacuous: it only proves anything
+// while Trello is still padding the highlighted row.
+record('the highlighted row carries left padding Trello added',
+  !!gParent && gParent.padL > 0 && gParent.padVar === gParent.padL + 'px',
+  `padL=${gParent && gParent.padL} --tt-padl=${gParent && gParent.padVar}`);
+const spineGap =
+  gParent && gChild && gParent.railX.length && gChild.railX.length
+    ? Math.abs(gParent.railX[0] - gChild.railX[0])
+    : null;
+record('the parent rail lines up with its child under the highlight',
+  spineGap !== null && spineGap < 0.5,
+  `parent=${JSON.stringify(gParent && gParent.railX)} child=${JSON.stringify(gChild && gChild.railX)} gap=${spineGap}`);
 
 // Drop the fragment and Trello restores the permalink, which puts the row back
 // on the ordinary binding path — the fallback has to go quiet, not linger.

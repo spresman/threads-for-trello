@@ -887,7 +887,21 @@
       // Exact, never rounded: rows are ~100.43px, and rounding left every
       // vertical 0.43px short of the boundary.
       spec.rowH = row.getBoundingClientRect().height;
-      decorateRails(row, spec);
+
+      // Arriving from a notification, Trello highlights the comment you were
+      // notified about by growing its row outward — a 4px left border, 12px of
+      // left padding and 16px of right — with the content staying put. That
+      // moves the row's *padding box*, which is the containing block for
+      // everything we position inside it, so the rail and the replying ring
+      // drift left by the padding while every other row's stays put: a visible
+      // step in the spine. Measured rather than assumed, so it is 0 on an
+      // ordinary row and follows Trello if they ever retune the highlight.
+      const rowCs = getComputedStyle(row);
+      const padL = parseFloat(rowCs.paddingLeft) || 0;
+      const padR = parseFloat(rowCs.paddingRight) || 0;
+      row.style.setProperty('--tt-padl', padL ? padL + 'px' : '0px');
+      row.style.setProperty('--tt-padr', padR ? padR + 'px' : '0px');
+      decorateRails(row, spec, padL);
     });
 
     // Siblings we don't manage (activity entries, "added this card to X") have
@@ -1291,7 +1305,7 @@
    * Rails sit 12px right of their level's left edge; a row indented by
    * `depth * indent` sees ancestor level i at `12 - (depth - i) * indent`.
    */
-  function decorateRails(row, spec) {
+  function decorateRails(row, spec, padL) {
     let layer = row.querySelector(':scope > .tt-rails');
     if (!spec.rails.length && !spec.elbow && !spec.parentRail) {
       if (layer) layer.remove();
@@ -1313,7 +1327,7 @@
       row.appendChild(layer);
     }
 
-    const want = JSON.stringify(spec);
+    const want = JSON.stringify(spec) + '|' + padL;
     if (layer.dataset.ttSpec === want) return; // nothing changed; leave the DOM alone
     layer.dataset.ttSpec = want;
 
@@ -1332,7 +1346,10 @@
     // widen the canvas leftward and shift every coordinate into it. Nothing is
     // ever outside the viewport, so clipping stops mattering.
     const guidePad = SETTINGS.maxDepth * SETTINGS.indentPx + 24;
-    layer.style.left = -guidePad + 'px';
+    // Offset by the row's own left padding so the origin is its *content* box,
+    // the one thing every row shares, rather than its padding box. Without this
+    // a highlighted row draws its rail `padL` to the left of everyone else's.
+    layer.style.left = padL - guidePad + 'px';
     layer.style.width = 'calc(100% + ' + guidePad + 'px)';
     const X = (v) => v + guidePad;
 
