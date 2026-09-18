@@ -4,6 +4,49 @@ Versions here match the `version` in `manifest.json`, which is what Chrome and
 the Web Store use to decide whether a user is out of date. Each release is
 tagged `v<version>` in git.
 
+## [0.3.5] - 2026-09-18
+
+### Fixed
+
+- **The thread spine still stepped sideways under a comment reached from a
+  notification — but only some of the time.** 0.3.4 measured the highlight's
+  padding during a repaint and anchored the rails to the row's content box with
+  it, which is right, but it left *when* that measurement happens to luck.
+  Trello switches the highlight on and off by rewriting the row's `class`, and a
+  class change is an attribute mutation, which the observer driving every
+  repaint does not watch — it watches `childList`. So the padding moved under a
+  layer that had already been anchored, and stayed wrong until some unrelated
+  DOM churn happened to trigger a rescan. Whether anything did was chance, which
+  is exactly why the step came and went. Measured with nothing else touching the
+  page: a 12px break when the class arrives, and 12px the other way when it
+  leaves — a rail left over from the highlight sits that far right of the spine
+  once the highlight is gone. The row's `class` is now watched directly, scoped
+  to the comment feed, and re-anchoring is separated from drawing: what a rail
+  looks like depends on the thread, where it starts depends on the padding, and
+  the two are no longer cached together.
+
+- **A hovered comment broke the spine beneath it, for as long as the mouse was
+  there.** Hovering reveals Trello's "Copy link to comment" control, and when
+  the author's name and the timestamp already fill the header line, that control
+  wraps onto a second line and the row grows by about 20px. Nothing is inserted
+  or removed to make that happen — hover is a CSS state — so the observer that
+  drives every repaint never heard about it, and the row's guides kept the
+  height they had been drawn for: the row grew, its rail did not, and a hole
+  opened between it and the row below. Measured at 19px, lasting as long as the
+  mouse stayed and closing when it left. It looked idiosyncratic because it
+  needs the header to sit within one control's width of wrapping — in a sweep of
+  display-name lengths exactly one of thirteen triggered it, one letter either
+  side of which nothing happened at all. Rows are now measured by a
+  `ResizeObserver`, on the border box, so the guides follow any size change
+  whether or not anything in the DOM moved.
+
+### Added
+
+- `test/browser/09-spine.mjs` — the guides staying continuous when a row changes
+  size: once by growing a row with no DOM change at all, which owes nothing to
+  Trello's markup, and once through the reported hover, sweeping the display
+  name to find the width where it wraps rather than assuming one.
+
 ## [0.3.4] - 2026-09-11
 
 ### Fixed

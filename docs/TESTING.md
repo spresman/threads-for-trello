@@ -164,8 +164,19 @@ The suites in `test/browser/`:
 | `06-reply-target` | a reply landing where it was aimed when the feed moves mid-compose |
 | `07-settings` | flat mode, `maxDepth`, `indentPx`, applied live and after reload |
 | `08-notification` | replying to a comment reached from the notification bell |
+| `09-spine` | the thread guides staying continuous when a row changes size |
 
 Run them all with `npm run test:live` (after `npm run browsers`).
+
+Files starting with `_` are probes, not suites: they assert nothing and are not
+in `test:live`. They print the full geometry around a bug the suites only check
+a number for, which is what you want when one of those numbers starts moving.
+Run one directly.
+
+| probe | prints |
+|---|---|
+| `_stale.mjs` | the rail origin either side of the notification highlight's class being toggled |
+| `_hover-wrap.mjs` | row heights and every painted spine segment as a comment is hovered at the width where its header wraps |
 
 ### Two things that cost an afternoon in `08-notification`
 

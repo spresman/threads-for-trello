@@ -226,6 +226,52 @@ record('the parent rail lines up with its child under the highlight',
   spineGap !== null && spineGap < 0.5,
   `parent=${JSON.stringify(gParent && gParent.railX)} child=${JSON.stringify(gChild && gChild.railX)} gap=${spineGap}`);
 
+// Trello turns the highlight on and off by rewriting the row's `class`, and an
+// attribute change reaches no childList observer — so for a while the rails
+// were re-anchored only when some unrelated DOM churn happened to trigger a
+// rescan, which is why the step showed up only sometimes. Toggling the class
+// with nothing else touching the page is the only way to prove the rails follow
+// the padding on their own. The class is read off the row rather than named:
+// Trello's are generated, and hard-coding one would quietly go vacuous.
+const setHighlight = (on) => b.page.evaluate(([par, kid, want]) => {
+  const find = (t) => Array.from(document.querySelectorAll('[data-tt-id]'))
+    .find((n) => n.innerText.includes(t));
+  const pr = find(par), ch = find(kid);
+  if (!pr || !ch) return null;
+  if (!pr.dataset.ttWas) pr.dataset.ttWas = pr.className;
+  const ordinary = new Set(Array.from(ch.classList));
+  const full = pr.dataset.ttWas.split(/\s+/).filter(Boolean);
+  // Off: keep only what an ordinary row also carries, plus our own classes.
+  pr.className = want
+    ? full.join(' ')
+    : full.filter((k) => k.startsWith('tt-') || ordinary.has(k)).join(' ');
+  return getComputedStyle(pr).paddingLeft;
+}, [ASKS, REPLY, on]);
+
+const alignedNow = async (label) => {
+  const pr = await railGeometry(b, ASKS);
+  const ch = await railGeometry(b, REPLY);
+  const gap = pr && ch && pr.railX.length && ch.railX.length
+    ? Math.abs(pr.railX[0] - ch.railX[0]) : null;
+  return { gap, pr, ch, detail: `${label} padL=${pr && pr.padL} --tt-padl=${pr && pr.padVar} parent=${JSON.stringify(pr && pr.railX)} child=${JSON.stringify(ch && ch.railX)} gap=${gap}` };
+};
+
+const offPad = await setHighlight(false);
+await b.page.waitForTimeout(1500);
+const off = await alignedNow('off:');
+record('dropping the highlight class alone takes the padding with it',
+  offPad === '0px' && !!off.pr && off.pr.padL === 0,
+  `computed=${offPad} ${off.detail}`);
+record('the spine holds when the highlight leaves on its own',
+  off.gap !== null && off.gap < 0.5 && off.pr.padVar === '0px', off.detail);
+
+await setHighlight(true);
+await b.page.waitForTimeout(1500);
+const on = await alignedNow('on:');
+record('the spine holds when the highlight arrives on its own',
+  on.gap !== null && on.gap < 0.5 && !!on.pr && on.pr.padL > 0
+    && on.pr.padVar === on.pr.padL + 'px', on.detail);
+
 // Drop the fragment and Trello restores the permalink, which puts the row back
 // on the ordinary binding path — the fallback has to go quiet, not linger.
 await openCard(b, card.shortLink);

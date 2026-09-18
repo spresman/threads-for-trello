@@ -146,6 +146,8 @@
     );
     try {
       observer.disconnect();
+      classObserver.disconnect();
+      rowResize.disconnect();
     } catch (_) {
       /* already gone */
     }
@@ -744,6 +746,7 @@
       container.dataset.ttDisplay = getComputedStyle(container).display;
     }
     reserveScrollbarGutter(container);
+    watchRowClasses(container);
 
     const ordersNatively = /flex|grid/.test(container.dataset.ttDisplay);
     container.classList.add('tt-container');
@@ -786,6 +789,11 @@
     for (const id of collapsed) {
       descendantsOf(children, id, []).forEach((d) => hidden.add(d));
     }
+
+    // Cleared each pass and re-established per row by `decorateRails`, so the
+    // observed set is exactly the rows that currently have rails — rows React
+    // has thrown away cannot accumulate in it.
+    rowResize.disconnect();
 
     order.forEach((id) => {
       const row = nodeById.get(id);
@@ -888,20 +896,10 @@
       // vertical 0.43px short of the boundary.
       spec.rowH = row.getBoundingClientRect().height;
 
-      // Arriving from a notification, Trello highlights the comment you were
-      // notified about by growing its row outward — a 4px left border, 12px of
-      // left padding and 16px of right — with the content staying put. That
-      // moves the row's *padding box*, which is the containing block for
-      // everything we position inside it, so the rail and the replying ring
-      // drift left by the padding while every other row's stays put: a visible
-      // step in the spine. Measured rather than assumed, so it is 0 on an
-      // ordinary row and follows Trello if they ever retune the highlight.
-      const rowCs = getComputedStyle(row);
-      const padL = parseFloat(rowCs.paddingLeft) || 0;
-      const padR = parseFloat(rowCs.paddingRight) || 0;
-      row.style.setProperty('--tt-padl', padL ? padL + 'px' : '0px');
-      row.style.setProperty('--tt-padr', padR ? padR + 'px' : '0px');
-      decorateRails(row, spec, padL);
+      decorateRails(row, spec);
+      // Anchored after the layer exists, so a row drawing rails for the first
+      // time still gets its origin in this same pass.
+      anchorRails(row);
     });
 
     // Siblings we don't manage (activity entries, "added this card to X") have
@@ -1294,6 +1292,124 @@
   }
 
   /**
+   * How far the guide canvas is widened to the left of the row, so lines at
+   * negative x are inside the viewport rather than clipped.
+   */
+  const guidePad = () => SETTINGS.maxDepth * SETTINGS.indentPx + 24;
+
+  /**
+   * Put a row's rail layer — and its replying ring — on the row's *content*
+   * box.
+   *
+   * Both are absolutely positioned inside the row, so they are measured from
+   * its padding box. Arriving from a notification, Trello highlights the
+   * comment you were notified about by growing that row outward: a 4px left
+   * border, 12px of left padding and 16px of right, pulled back by a negative
+   * margin so the comment itself does not move. The padding box moves, the
+   * content box does not — which makes the content box the one origin every
+   * row agrees on, highlighted or not.
+   *
+   * Measured rather than assumed, so it is 0 on an ordinary row and follows
+   * Trello if they ever retune the highlight. The two custom properties exist
+   * because CSS cannot read an element's own padding, and the ring is styled in
+   * CSS.
+   */
+  function anchorRails(row) {
+    const cs = getComputedStyle(row);
+    const padL = parseFloat(cs.paddingLeft) || 0;
+    const padR = parseFloat(cs.paddingRight) || 0;
+    row.style.setProperty('--tt-padl', padL + 'px');
+    row.style.setProperty('--tt-padr', padR + 'px');
+    const layer = row.querySelector(':scope > .tt-rails');
+    if (layer) layer.style.left = padL - guidePad() + 'px';
+  }
+
+  // Re-anchoring is idempotent and touches no path data, so a burst of class
+  // changes collapses into one pass on the next frame.
+  let anchorQueue = null;
+  function queueAnchor(row) {
+    if (!anchorQueue) {
+      anchorQueue = new Set();
+      requestAnimationFrame(() => {
+        const rows = anchorQueue;
+        anchorQueue = null;
+        rows.forEach((r) => {
+          if (r.isConnected) anchorRails(r);
+        });
+      });
+    }
+    anchorQueue.add(row);
+  }
+
+  /**
+   * A row can change height with no DOM change at all.
+   *
+   * Hovering a comment reveals Trello's "Copy link to comment" control, and if
+   * the author's name and the timestamp already fill the header line, that
+   * control wraps onto a second line and the row grows — for as long as the
+   * mouse is over it. Nothing is inserted or removed, so the childList observer
+   * that drives every repaint never hears about it, and the rails keep the
+   * height they were drawn for: the row grows, its rail does not, and a hole
+   * opens between that row and the one below. Measured at 19px, lasting as long
+   * as the mouse stayed. It looks idiosyncratic because it needs the header to
+   * sit within one control's width of wrapping — one letter more or less in
+   * somebody's display name and it never happens at all.
+   *
+   * Height is the only thing about a rail that depends on the row's size, so
+   * this redraws from the reported height rather than running a full pass.
+   */
+  const rowResize = new ResizeObserver((entries) => {
+    if (retired) return;
+    for (const e of entries) {
+      const row = e.target;
+      const layer = row.querySelector(':scope > .tt-rails');
+      if (!layer || !layer.dataset.ttSpec) continue;
+      let spec;
+      try {
+        spec = JSON.parse(layer.dataset.ttSpec);
+      } catch (_) {
+        continue; // rewritten by the next paint anyway
+      }
+      // Read the same way the paint loop reads it, so the two can never
+      // disagree by a fraction of a pixel and redraw each other in a loop.
+      const h = row.getBoundingClientRect().height;
+      if (Math.abs(spec.rowH - h) < 0.01) continue;
+      spec.rowH = h;
+      decorateRails(row, spec);
+    }
+  });
+
+  /**
+   * Trello turns the notification highlight on and off by changing the row's
+   * `class`, and an attribute change is invisible to the childList observer
+   * that drives every repaint. So the padding could move under a layer that had
+   * already been anchored, and stay wrong until some unrelated DOM churn
+   * happened to trigger a rescan — luck, not design, which is exactly why the
+   * step appeared only some of the time. Measured at a 12px break both on the
+   * class arriving and on it leaving, with nothing else touched.
+   */
+  const classObserver = new MutationObserver((records) => {
+    if (retired) return;
+    for (const r of records) {
+      const row = r.target;
+      if (row && row.nodeType === 1 && row.dataset && row.dataset.ttId) queueAnchor(row);
+    }
+  });
+  let classObserved = null;
+  function watchRowClasses(container) {
+    if (container === classObserved) return;
+    classObserved = container;
+    // Scoped to the feed and re-pointed when React swaps it, rather than left
+    // on the document: every class change on the page would otherwise wake it.
+    classObserver.disconnect();
+    classObserver.observe(container, {
+      attributes: true,
+      attributeFilter: ['class'],
+      subtree: true,
+    });
+  }
+
+  /**
    * Draw the thread guides for one row. Purely decorative — collapsing is the
    * arrow's job.
    *
@@ -1305,7 +1421,7 @@
    * Rails sit 12px right of their level's left edge; a row indented by
    * `depth * indent` sees ancestor level i at `12 - (depth - i) * indent`.
    */
-  function decorateRails(row, spec, padL) {
+  function decorateRails(row, spec) {
     let layer = row.querySelector(':scope > .tt-rails');
     if (!spec.rails.length && !spec.elbow && !spec.parentRail) {
       if (layer) layer.remove();
@@ -1326,8 +1442,15 @@
       // place the avatar.
       row.appendChild(layer);
     }
+    // Border box, not the default content box: the row's height as the rails
+    // use it includes padding and border, and Trello's notification highlight
+    // changes padding without touching content at all — which a content-box
+    // observation does not report.
+    rowResize.observe(row, { box: 'border-box' });
 
-    const want = JSON.stringify(spec) + '|' + padL;
+    // The spec alone: the layer's origin is `anchorRails`' business, and it is
+    // re-applied unconditionally, so it can never be cached stale here.
+    const want = JSON.stringify(spec);
     if (layer.dataset.ttSpec === want) return; // nothing changed; leave the DOM alone
     layer.dataset.ttSpec = want;
 
@@ -1345,13 +1468,9 @@
     // CSS rule or SVG attribute, because Trello's stylesheet outranks ours —
     // widen the canvas leftward and shift every coordinate into it. Nothing is
     // ever outside the viewport, so clipping stops mattering.
-    const guidePad = SETTINGS.maxDepth * SETTINGS.indentPx + 24;
-    // Offset by the row's own left padding so the origin is its *content* box,
-    // the one thing every row shares, rather than its padding box. Without this
-    // a highlighted row draws its rail `padL` to the left of everyone else's.
-    layer.style.left = padL - guidePad + 'px';
-    layer.style.width = 'calc(100% + ' + guidePad + 'px)';
-    const X = (v) => v + guidePad;
+    const pad = guidePad();
+    layer.style.width = 'calc(100% + ' + pad + 'px)';
+    const X = (v) => v + pad;
 
     // Ancestor lines passing straight through this row.
     for (const x of spec.rails) seg.push(`M${X(x)} 0V${H}`);
