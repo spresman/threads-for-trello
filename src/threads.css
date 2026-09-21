@@ -138,6 +138,26 @@
   z-index: 2;
 }
 
+/* Trello's notification highlight on an indented reply, repainted from the
+   panel edge so its bar sits where it does on a flat comment — see
+   markNotified(). The pseudo-element is measured from the row's padding box:
+   `-bord` is the row's own left edge, and the indent further left of that is
+   the panel edge. Its width runs to the row's padding box, so it covers
+   Trello's bar and joins the row's own background with no seam. */
+.tt-row[data-tt-notified]::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(-1 * (var(--tt-indent, 0px) + var(--tt-bord, 0px)));
+  width: calc(var(--tt-indent, 0px) + var(--tt-bord, 0px));
+  box-sizing: border-box;
+  border-left: var(--tt-bord, 0px) solid var(--tt-hl-bar, transparent);
+  border-radius: var(--tt-hl-radius, 0);
+  background: var(--tt-hl-bg, transparent);
+  pointer-events: none;
+}
+
 /* -------------------------------------------------------------- controls */
 
 /* Reply and the collapse arrow clone Trello's own button classes and separator

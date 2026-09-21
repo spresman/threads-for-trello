@@ -153,6 +153,7 @@
       observer.disconnect();
       classObserver.disconnect();
       rowResize.disconnect();
+      document.removeEventListener('scroll', holdPanelX, true);
     } catch (_) {
       /* already gone */
     }
@@ -752,6 +753,7 @@
     }
     reserveScrollbarGutter(container);
     watchRowClasses(container);
+    settlePanelX(container);
 
     const ordersNatively = /flex|grid/.test(container.dataset.ttDisplay);
     container.classList.add('tt-container');
@@ -1335,12 +1337,43 @@
    * highlighted row pays for the measuring; an ordinary row's padding box is
    * its border box and needs none.
    */
+  /**
+   * Carry the notification highlight back out to the panel's left edge.
+   *
+   * Trello draws it as a band with a dark bar down its left, starting at the
+   * row's left edge — which for a reply is indented with the reply, so the bar
+   * lands a whole indent (or several) in from where it sits on every flat
+   * comment. A `::before` spanning the indent repaints the band from the panel
+   * edge, bar and all, and covers Trello's own bar. It is under the row's rails
+   * (earlier in the row's own stacking order), so every guide still runs
+   * through it.
+   *
+   * A data attribute rather than a class: Trello rewrites the row's `class` to
+   * toggle the highlight, and would drop ours with it. The colours and the
+   * border width are read back from Trello's styles, not restated, so a scaled
+   * display's snapped border and dark mode's colours both come through as-is.
+   */
+  function markNotified(row, cs) {
+    const bord = parseFloat(cs.borderLeftWidth) || 0;
+    const on = bord > 0 && (+row.dataset.ttDepth || 0) > 0;
+    if (!on) {
+      if (row.dataset.ttNotified) delete row.dataset.ttNotified;
+      return;
+    }
+    row.style.setProperty('--tt-bord', bord + 'px');
+    row.style.setProperty('--tt-hl-bar', cs.borderLeftColor);
+    row.style.setProperty('--tt-hl-bg', cs.backgroundColor);
+    row.style.setProperty('--tt-hl-radius', cs.borderTopLeftRadius + ' 0 0 ' + cs.borderBottomLeftRadius);
+    row.dataset.ttNotified = '1';
+  }
+
   function anchorRails(row) {
     const cs = getComputedStyle(row);
     const padL = parseFloat(cs.paddingLeft) || 0;
     const padR = parseFloat(cs.paddingRight) || 0;
     row.style.setProperty('--tt-padl', padL + 'px');
     row.style.setProperty('--tt-padr', padR + 'px');
+    markNotified(row, cs);
     const layer = row.querySelector(':scope > .tt-rails');
     if (!layer) return;
 
@@ -1457,6 +1490,43 @@
       subtree: true,
     });
   }
+  /**
+   * Never let the comment panel sit scrolled sideways.
+   *
+   * An indented row is shifted right by a transform, so its box overhangs the
+   * panel on the right by its indent. The panel is `overflow-x: hidden`, which
+   * stops the user scrolling it but not a script: arriving from a notification
+   * or a `#comment-` link, Trello's own `scrollIntoView` scrolls into that
+   * overhang, and the thread slides left under the panel edge with the
+   * comments above the notified one cut off (measured: 31px from the bell, 69px
+   * from a deep link, on a depth-3 reply). Without the overhang there is
+   * nothing to scroll, so pinning x to 0 is simply Trello's own behaviour.
+   *
+   * Only `hidden` panels, which cannot be scrolled sideways by hand, so this
+   * never undoes anything the user did; and only x, so Trello's vertical
+   * scroll to the comment is untouched.
+   */
+  function holdPanelX(e) {
+    const n = e.target;
+    if (retired || !(n instanceof Element) || !n.scrollLeft) return;
+    if (!n.querySelector('[data-tt-id]')) return;
+    unscrollX(n);
+  }
+  function unscrollX(n) {
+    if (n.scrollLeft && getComputedStyle(n).overflowX === 'hidden') n.scrollLeft = 0;
+  }
+  /**
+   * The same, from the paint loop. Trello can scroll before any row has been
+   * bound — measured: 14px on a depth-1 reply, 1.5s in — and a panel that
+   * holds no bound row yet is one `holdPanelX` does not recognise; without a
+   * later scroll event it would stay there.
+   */
+  function settlePanelX(container) {
+    for (let n = container; n && n !== document.body; n = n.parentElement) unscrollX(n);
+  }
+  // Capture, because `scroll` does not bubble from an element.
+  document.addEventListener('scroll', holdPanelX, true);
+
 
   /**
    * Draw the thread guides for one row. Purely decorative — collapsing is the

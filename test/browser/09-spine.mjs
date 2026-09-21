@@ -250,6 +250,64 @@ for (const zoom of [1, 1.1]) {
 await setZoom(1);
 await a.page.waitForTimeout(1200);
 
+// ------------------------------------- the panel and the highlight's bar
+
+// An indented row is shifted right by a transform, so its box overhangs the
+// panel by its indent. The panel is `overflow-x: hidden`, which stops a user
+// scrolling sideways but not a script, and Trello's scroll to a notified
+// comment used to scroll into the overhang - cutting off the comments above
+// it. And the highlight's bar, drawn on the row's own left edge, sat a whole
+// indent in from where it sits on a flat comment. Both are checked on the
+// highlighted depth-1 reply, at zoom 1, where screen and CSS pixels agree.
+const panel = () => a.page.evaluate(() => {
+  const rows = Array.from(document.querySelectorAll('[data-tt-id]'));
+  const hl = rows.find((n) => getComputedStyle(n).backgroundColor !== 'rgba(0, 0, 0, 0)');
+  const root = rows.find((n) => n.dataset.ttDepth === '0');
+  const sideways = [];
+  for (let n = root && root.parentElement; n && n !== document.body; n = n.parentElement) {
+    if (n.scrollLeft) sideways.push(`${n.tagName.toLowerCase()}:${n.scrollLeft}`);
+  }
+  if (!hl || !root) return { sideways, bar: null, flat: null };
+  const cs = getComputedStyle(hl), pb = getComputedStyle(hl, '::before');
+  const drawn = pb.content === 'none' || pb.content === 'normal'
+    ? hl.getBoundingClientRect().left
+    : hl.getBoundingClientRect().left + parseFloat(cs.borderLeftWidth) + parseFloat(pb.left);
+  return {
+    sideways,
+    bar: +drawn.toFixed(2),
+    // A flat comment's highlight is pulled 16px out past its row.
+    flat: +(root.getBoundingClientRect().left - parseFloat(cs.marginLeft) * -1).toFixed(2),
+    depth: hl.dataset.ttDepth,
+  };
+});
+
+await highlight(K1);
+const p1 = await panel();
+record('arriving at a highlighted reply leaves the panel unscrolled sideways',
+  p1.sideways.length === 0, p1.sideways.join(' ') || 'scrollLeft 0 throughout');
+record("the highlight's bar sits where a flat comment's does",
+  p1.bar !== null && Math.abs(p1.bar - p1.flat) < 0.5,
+  `depth ${p1.depth}: bar x=${p1.bar}, flat comment's bar x=${p1.flat}`);
+
+// Whatever does the scrolling. Set directly, so this does not depend on
+// Trello choosing to scroll on any particular arrival.
+const shoved = await a.page.evaluate(() => {
+  const root = document.querySelector('[data-tt-depth="0"]');
+  for (let n = root.parentElement; n && n !== document.body; n = n.parentElement) {
+    if (getComputedStyle(n).overflowX === 'hidden' && n.scrollWidth > n.clientWidth) {
+      n.scrollLeft = 30;
+      return n.scrollLeft;
+    }
+  }
+  return 0;
+});
+await a.page.waitForTimeout(400);
+const p2 = await panel();
+record('the panel can be scrolled sideways by a script at all', shoved > 0,
+  `scrollLeft reached ${shoved} before the extension put it back`);
+record('and a sideways scroll from any script is put straight back',
+  p2.sideways.length === 0, p2.sideways.join(' ') || 'scrollLeft 0');
+
 const failures = summary();
 await a.browser.close();
 process.exit(failures ? 1 : 0);

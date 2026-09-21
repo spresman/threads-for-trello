@@ -164,7 +164,7 @@ The suites in `test/browser/`:
 | `06-reply-target` | a reply landing where it was aimed when the feed moves mid-compose |
 | `07-settings` | flat mode, `maxDepth`, `indentPx`, applied live and after reload |
 | `08-notification` | replying to a comment reached from the notification bell |
-| `09-spine` | the thread guides staying continuous when a row changes size |
+| `09-spine` | the thread guides staying continuous when a row changes size; a highlighted reply's bar at the panel edge, and the panel never left scrolled sideways |
 
 Run them all with `npm run test:live` (after `npm run browsers`).
 
@@ -181,6 +181,7 @@ Run one directly.
 | `_notifreply.mjs` | the real bell arrival where the notified comment is a *reply*, on the account that was notified |
 | `_pixels.mjs` | the rendered pixel columns across the spine, by having the browser decode its own screenshot |
 | `_dpr.mjs` | the highlight's box under device scaling and dark mode — including that emulating a device scale factor over CDP does *not* reproduce the snapping a real one causes |
+| `_bellscroll.mjs` | the panel's sideways scroll and the highlight bar's position after a real bell arrival on a reply of any depth (`node test/browser/_bellscroll.mjs 3`), with the deep link alongside |
 
 ### Two things that cost an afternoon in `08-notification`
 

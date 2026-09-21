@@ -1,6 +1,6 @@
 {
   "name": "threads-for-trello",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "Collapsible threaded replies on Trello cards, built on native Trello comments.",
   "private": true,
   "scripts": {

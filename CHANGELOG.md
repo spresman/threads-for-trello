@@ -4,6 +4,29 @@ Versions here match the `version` in `manifest.json`, which is what Chrome and
 the Web Store use to decide whether a user is out of date. Each release is
 tagged `v<version>` in git.
 
+## [0.3.7] - 2026-09-21
+
+### Fixed
+
+- **Arriving at a tagged reply from the notification bell cut off the comments
+  above it.** A reply is indented with a transform, so its box overhangs the
+  comment panel on the right by its indent. The panel is `overflow-x: hidden`,
+  which stops a user scrolling sideways but not a script, and Trello's scroll to
+  the notified comment scrolled into that overhang too — the whole thread slid
+  left under the panel's edge (measured: 31px from the bell and 69px from a
+  `#comment-` link, on a depth-3 reply). The panel is now held at no sideways
+  scroll, which is exactly where it stays without the extension, since there is
+  then nothing to scroll into. Trello's vertical scroll to the comment is
+  untouched.
+
+### Changed
+
+- **The notification highlight on a reply now starts at the panel's left
+  edge**, bar included, just as it does on a flat comment. It used to start at
+  the reply's own indented edge, a whole indent (or several) further in. The
+  band's colours and bar width are read from Trello's own styles, so dark mode
+  and a scaled display's snapped border carry over as they are.
+
 ## [0.3.6] - 2026-09-21
 
 ### Fixed
