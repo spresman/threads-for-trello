@@ -53,12 +53,17 @@ const spine = (needle) => a.page.evaluate((t) => {
     const svg = row.querySelector(':scope > .tt-rails');
     const path = svg && svg.querySelector('path');
     if (!path) continue;
-    const sr = svg.getBoundingClientRect();
+    // Through the layer's own CTM rather than by adding user units to its
+    // screen rect: under a page zoom those are different scales, and the error
+    // grows with the coordinate, which shows up as a per-depth step that is not
+    // there. At zoom 1 the two agree exactly.
+    const ctm = svg.getScreenCTM();
+    if (!ctm) continue;
     for (const m of (path.getAttribute('d') || '').matchAll(/M(-?[\d.]+) (-?[\d.]+)V(-?[\d.]+)/g)) {
       segs.push({
-        x: +(sr.left + +m[1]).toFixed(2),
-        y0: sr.top + +m[2],
-        y1: sr.top + +m[3],
+        x: +(ctm.a * +m[1] + ctm.e).toFixed(3),
+        y0: ctm.d * +m[2] + ctm.f,
+        y1: ctm.d * +m[3] + ctm.f,
         d: row.dataset.ttDepth,
       });
     }
@@ -79,12 +84,22 @@ const spine = (needle) => a.page.evaluate((t) => {
       }
     }
   }
+  // Segments grouped together are meant to be one spine, so any disagreement
+  // in x between them is a sideways step in it.
+  let spread = 0, spreadAt = '';
+  for (const q of groups) {
+    const xs = q.map((g) => g.x);
+    const sp = Math.max(...xs) - Math.min(...xs);
+    if (sp > spread) { spread = sp; spreadAt = q.map((g) => `d${g.d}:${g.x}`).join(' '); }
+  }
   const target = rows.find((n) => n.innerText.includes(t));
   return {
     rowH: target ? +target.getBoundingClientRect().height.toFixed(1) : null,
     hovered: target ? target.matches(':hover') : false,
     hole: +hole.toFixed(2),
     where,
+    spread: +spread.toFixed(3),
+    spreadAt,
   };
 }, needle);
 
@@ -183,6 +198,58 @@ if (!found) {
 }
 
 console.log(`\ncard: https://trello.com/c/${card.shortLink}`);
+// ------------------------------- a highlighted row on a scaled display
+
+// Trello's highlight is `margin-left: -16px` + `border-left: 4px` +
+// `padding-left: 12px`, which cancels exactly in whole pixels. A border and a
+// padding are each snapped to whole *device* pixels, though, so on a scaled
+// display they stop cancelling and the row's content genuinely moves about a
+// device pixel - invisible on a 24px avatar, very visible on a line running the
+// height of the feed. A page zoom reproduces that snapping faithfully: measured
+// at devicePixelRatio 2.2 the 4px border reports back as 3.63636px, and so it
+// does at zoom 1.1. Emulating a device scale factor over CDP does not - the
+// border stays a clean 4px - so zoom is what this uses.
+const setZoom = (z) => a.page.evaluate((v) => {
+  document.documentElement.style.zoom = v === 1 ? '' : String(v);
+}, z);
+
+const highlight = async (needle) => {
+  await a.page.evaluate(() => { location.hash = '#none'; });
+  await a.page.waitForTimeout(800);
+  const id = await a.page.evaluate((t) => {
+    const el = Array.from(document.querySelectorAll('[data-tt-id]')).find((n) => n.innerText.includes(t));
+    return el ? el.dataset.ttId : null;
+  }, needle);
+  await a.page.evaluate((i) => { location.hash = `#comment-${i}`; }, id);
+  await a.page.waitForTimeout(2000);
+};
+
+const borderOf = () => a.page.evaluate(() => {
+  const row = Array.from(document.querySelectorAll('[data-tt-id]'))
+    .find((n) => getComputedStyle(n).backgroundColor !== 'rgba(0, 0, 0, 0)');
+  return row ? getComputedStyle(row).borderLeftWidth : null;
+});
+
+for (const zoom of [1, 1.1]) {
+  await setZoom(zoom);
+  await a.page.waitForTimeout(1500);
+  await highlight(K1);
+  const bord = await borderOf();
+  const g = await spine(K1);
+  if (zoom !== 1) {
+    // Without this the next assertion proves nothing: it only bites while the
+    // browser is actually snapping the highlight's border away from 4px.
+    record('a scaled display really does snap the highlight border',
+      bord !== null && bord !== '4px', `border-left=${bord} at zoom ${zoom}`);
+  }
+  // 1/64px is Chrome's LayoutUnit granularity and the floor of what any
+  // measurement here can resolve, so the bar sits just above it.
+  record(`the highlighted reply spine lines up at zoom ${zoom}`,
+    g.spread < 0.03, `border-left=${bord} spread=${g.spread} [${g.spreadAt}]`);
+}
+await setZoom(1);
+await a.page.waitForTimeout(1200);
+
 const failures = summary();
 await a.browser.close();
 process.exit(failures ? 1 : 0);

@@ -68,6 +68,11 @@
   const RAIL_X = 20; // avatar centre
   const AVATAR_LEFT = 8; // avatar's left edge within the row
   const AVATAR_BOTTOM = 40; // where a rail may start without touching it
+  // Where the comment body starts, measured from the row's content box. Unlike
+  // the avatar, the body sits on the feed grid's own column lines rather than
+  // in the row's flow, so it is the one thing on a row that a highlight cannot
+  // move — which makes it the reference the rails are lined up against.
+  const BODY_X = 36;
   // Stop 1px short of the avatar: enough that the stroke never bites into the
   // circle, close enough that the curve reads as reaching it. At 3px the
   // quarter-turn ended with almost no horizontal run and looked like a stub.
@@ -1313,6 +1318,22 @@
    * Trello if they ever retune the highlight. The two custom properties exist
    * because CSS cannot read an element's own padding, and the ring is styled in
    * CSS.
+   *
+   * Adding the padding is exact only while the highlight's three lengths cancel
+   * exactly, and on a scaled display they do not. A border and a padding are
+   * snapped to whole *device* pixels, each on its own: at devicePixelRatio 2.2
+   * Trello's 4px border is 8.8 device pixels, painted as 8, and reported back
+   * by `getComputedStyle` as 3.63636px. The -16px margin, the border and the
+   * padding then no longer sum to zero and the row's content really does move,
+   * by about a device pixel. A rail that follows its own row faithfully follows
+   * it there too, and the spine steps — which is invisible on a 24px avatar and
+   * very visible on a line running the height of the feed.
+   *
+   * So a row carrying padding or a border is lined up against its comment body
+   * instead, by measurement: that sits on the feed grid's column lines, is the
+   * same on every row, and does not move when a row is highlighted. Only the
+   * highlighted row pays for the measuring; an ordinary row's padding box is
+   * its border box and needs none.
    */
   function anchorRails(row) {
     const cs = getComputedStyle(row);
@@ -1321,7 +1342,35 @@
     row.style.setProperty('--tt-padl', padL + 'px');
     row.style.setProperty('--tt-padr', padR + 'px');
     const layer = row.querySelector(':scope > .tt-rails');
-    if (layer) layer.style.left = padL - guidePad() + 'px';
+    if (!layer) return;
+
+    const pad = guidePad();
+    const bordL = parseFloat(cs.borderLeftWidth) || 0;
+    if (!padL && !bordL) {
+      layer.style.left = -pad + 'px';
+      return;
+    }
+
+    layer.style.left = padL - pad + 'px';
+    const body = row.querySelector('[data-testid="card-back-action-container"]');
+    if (!body) return; // nothing to line up against; the arithmetic stands
+
+    // The layer's own CTM carries the page scale, so a screen distance can be
+    // turned back into the CSS pixels `left` is written in.
+    const ctm = layer.getScreenCTM();
+    const scale = ctm && ctm.a ? ctm.a : 1;
+    const bodyBox = body.getBoundingClientRect();
+    // A collapsed or hidden row measures all zeroes, and correcting against
+    // that would throw the origin across the page. It is not being drawn, and
+    // the pass that reveals it anchors it again.
+    if (!bodyBox.width) return;
+    const have = layer.getBoundingClientRect().left;
+    // Where the origin has to sit for this row's rails to land exactly where an
+    // unhighlighted row's do. Both elements are inside the same transformed
+    // row, so the indent is in both and cancels.
+    const want = bodyBox.left - (BODY_X + pad) * scale;
+    const drift = (want - have) / scale;
+    if (Math.abs(drift) > 0.01) layer.style.left = padL - pad + drift + 'px';
   }
 
   // Re-anchoring is idempotent and touches no path data, so a burst of class

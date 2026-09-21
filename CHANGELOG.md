@@ -4,6 +4,48 @@ Versions here match the `version` in `manifest.json`, which is what Chrome and
 the Web Store use to decide whether a user is out of date. Each release is
 tagged `v<version>` in git.
 
+## [0.3.6] - 2026-09-21
+
+### Fixed
+
+- **On a scaled display, a highlighted reply's spine sat about a pixel left of
+  the root's.** Trello highlights the comment you were notified about with
+  `margin-left: -16px` + `border-left: 4px` + `padding-left: 12px`, three
+  lengths that cancel exactly — in whole pixels. A border and a padding are each
+  snapped to whole *device* pixels, and on a scaled display they stop
+  cancelling: at devicePixelRatio 2.2 the 4px border is 8.8 device pixels,
+  painted as 8, and `getComputedStyle` reports it back as 3.63636px. The row's
+  content then really does move, by about a device pixel. Rails were anchored to
+  the row's content box, so they followed it there — faithful to the row, and a
+  visible step in a line that runs the height of the feed, while the shift
+  itself is invisible on a 24px avatar.
+
+  A row carrying padding or a border is now lined up against its comment body
+  instead, by measurement: the body sits on the feed grid's own column lines, is
+  identical on every row, and does not move when a row is highlighted. Measured
+  at a zoom that reproduces the same snapping: a 0.391px step becomes 0.016px,
+  which is 1/64 — Chrome's `LayoutUnit` granularity, and the floor of what any
+  measurement can resolve. Only a highlighted row is measured; an ordinary row's
+  padding box is its border box and the arithmetic is already exact.
+
+  Not reproducible at 100% on an unscaled display, which is why it survived
+  0.3.4 and 0.3.5: every whole-pixel configuration cancels perfectly.
+
+### Changed
+
+- `09-spine.mjs` reconstructs painted coordinates through the rail layer's own
+  `getScreenCTM()` rather than by adding SVG user units to its screen rect. The
+  two agree at zoom 1 and diverge under one, in proportion to the coordinate —
+  which reads as a per-depth step that is not there. It now also checks the
+  spine's sideways spread, not only the holes in it, and covers a highlighted
+  reply at a zoom that snaps the highlight border, with a guard so the check
+  cannot pass vacuously if Trello stops padding the row.
+
+- Four probes kept beside the suites, covering ground the suites do not: a
+  branching thread with every row taken in turn as the highlighted one, the real
+  bell arrival where the notified comment is a reply, the rendered pixel columns
+  across the spine, and the highlight's box under device scaling and dark mode.
+
 ## [0.3.5] - 2026-09-18
 
 ### Fixed

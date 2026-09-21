@@ -177,6 +177,10 @@ Run one directly.
 |---|---|
 | `_stale.mjs` | the rail origin either side of the notification highlight's class being toggled |
 | `_hover-wrap.mjs` | row heights and every painted spine segment as a comment is hovered at the width where its header wraps |
+| `_spine3.mjs` | every row of a branching thread taken in turn as the highlighted one, across page zooms |
+| `_notifreply.mjs` | the real bell arrival where the notified comment is a *reply*, on the account that was notified |
+| `_pixels.mjs` | the rendered pixel columns across the spine, by having the browser decode its own screenshot |
+| `_dpr.mjs` | the highlight's box under device scaling and dark mode — including that emulating a device scale factor over CDP does *not* reproduce the snapping a real one causes |
 
 ### Two things that cost an afternoon in `08-notification`
 
